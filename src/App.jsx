@@ -652,7 +652,7 @@ MRTQ: 精神×緊張緩和×群×静
 
           {/* 睡眠 */}
           <div style={S.secWrap}>
-            <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>昨夜の睡眠満足度</span></div>
+            <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>昨夜の睡眠満足度<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
             <div style={S.faceGrid}>
               {[1,2,3,4,5].map((v) => (
                 <button key={v} onClick={() => setSleep(v)} style={S.faceBtn(sleep===v, "#5a35c8")}>
@@ -665,7 +665,7 @@ MRTQ: 精神×緊張緩和×群×静
 
           {/* 疲労 */}
           <div style={S.secWrap}>
-            <div style={S.secHead}><div style={S.secBar("#c04820")}/><span style={S.secLabel}>今の体の疲労感</span></div>
+            <div style={S.secHead}><div style={S.secBar("#c04820")}/><span style={S.secLabel}>今の体の疲労感<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
             <div style={S.faceGrid}>
               {[1,2,3,4,5].map((v) => (
                 <button key={v} onClick={() => setFatigue(v)} style={S.faceBtn(fatigue===v, "#c04820")}>
@@ -678,7 +678,7 @@ MRTQ: 精神×緊張緩和×群×静
 
           {/* イベント */}
           <div style={S.secWrap}>
-            <div style={S.secHead}><div style={S.secBar("#1a7ac0")}/><span style={S.secLabel}>昨日のイベント（複数OK）</span></div>
+            <div style={S.secHead}><div style={S.secBar("#1a7ac0")}/><span style={S.secLabel}>昨日のイベント（複数OK）<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
             <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 10px" }}>ドラッグで並び替え、×で削除できます</p>
             <RecoveryManager
               items={eventItems}
@@ -699,7 +699,7 @@ MRTQ: 精神×緊張緩和×群×静
 
           {/* 崩れ */}
           <div style={S.secWrap}>
-            <div style={S.secHead}><div style={S.secBar("#c02020")}/><span style={S.secLabel}>昨日、崩れた？</span></div>
+            <div style={S.secHead}><div style={S.secBar("#c02020")}/><span style={S.secLabel}>昨日、崩れた？<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
             <div style={S.ynGrid}>
               <button onClick={() => setKuzure(true)} style={S.ynBtn(kuzure===true, "#c02020")}>した</button>
               <button onClick={() => setKuzure(false)} style={S.ynBtn(kuzure===false, "#5a35c8")}>してない</button>
@@ -769,7 +769,14 @@ MRTQ: 精神×緊張緩和×群×静
           )}
 
           <button onClick={handleSave} style={S.saveBtn}>{editingLog ? "編集を保存する" : "記録する"}</button>
-          {saved && <p style={S.savedMsg}>記録しました。明日の朝また来てね</p>}
+          {saved && (
+            <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, pointerEvents: "none" }}>
+              <div style={{ background: "#1a1a1a", color: "#fff", borderRadius: 16, padding: "16px 28px", fontSize: 15, fontWeight: 700, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", textAlign: "center" }}>
+                <p style={{ margin: "0 0 4px" }}>記録しました ✓</p>
+                <p style={{ margin: 0, fontSize: 12, fontWeight: 400, color: "#aaa" }}>明日の朝また来てね</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
