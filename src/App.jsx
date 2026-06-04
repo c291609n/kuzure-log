@@ -708,7 +708,7 @@ MRTQ: 精神×緊張緩和×群×静
             {kuzure !== true && (
               <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {ACTIONS_DEFAULT.map((a) => (
-                  <span key={a} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 10, background: "#f0f0f0", color: "#ccc", border: "1px solid #e8e8e8" }}>{a}</span>
+                  <span key={a} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 10, background: "#ebebeb", color: "#888", border: "1px solid #ddd" }}>{a}</span>
                 ))}
               </div>
             )}
