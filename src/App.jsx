@@ -442,6 +442,7 @@ export default function App() {
 
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
 
   const runAiAnalysis = async () => {
     if (logs.length < 3) return;
@@ -469,15 +470,15 @@ export default function App() {
           max_tokens: 1000,
           messages: [{
             role: "user",
-            content: `以下は私の日々の崩れログです。このデータから、私の崩れのパターン、崩れやすい条件、回復しやすい条件を分析してください。
+            content: `以下は私の日々の崩れログです。
 
 重要：
-- 日付とイベント・メモの内容を使って具体的に書いてください（例：「友達とご飯に行った6/1は〜」「バイトがあった日の翌朝は〜」）
-- 毎日共通して出てくる項目は「関係なし」と判断してください
+- 日付やイベントを使って具体的に書いてください
 - 崩れた日と崩れなかった日の違いに注目してください
 - 疲労感は「元気→やや元気→ふつう→やや疲れ→限界」の順で悪化します
 - 睡眠満足度は「最悪→悪い→まあまあ→良い→ぐっすり」の順で良くなります
-- 気づきを3つ、箇条書きで教えてください。それぞれ具体的な日付や出来事を入れてください
+- まず一番重要な気づきを1文で書いてください（SUMMARY:から始めて）
+- その後、詳細な気づきを3つ箇条書きで書いてください（DETAIL:から始めて）
 
 データ：
 ${JSON.stringify(summary, null, 2)}`
@@ -703,6 +704,15 @@ MRTQ: 精神×緊張緩和×群×静
               <button onClick={() => setKuzure(true)} style={S.ynBtn(kuzure===true, "#c02020")}>した</button>
               <button onClick={() => setKuzure(false)} style={S.ynBtn(kuzure===false, "#5a35c8")}>してない</button>
             </div>
+            {/* Preview of actions when nothing selected */}
+            {kuzure !== true && (
+              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {ACTIONS_DEFAULT.map((a) => (
+                  <span key={a} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 10, background: "#f0f0f0", color: "#ccc", border: "1px solid #e8e8e8" }}>{a}</span>
+                ))}
+              </div>
+            )}
+
             {kuzure === true && (
               <div style={{ marginTop: 16 }}>
                 <p style={{ ...S.secLabel, marginBottom: 6 }}>何をした？（複数OK）</p>
@@ -953,7 +963,7 @@ MRTQ: 精神×緊張緩和×群×静
               ))}
               <div style={S.patternBox}>
                 <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
-                {!aiAnalysis && !aiLoading && (
+                {!aiAnalysis && !aiLoading && logs.length >= 3 && (
                   <button
                     onClick={runAiAnalysis}
                     style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}
@@ -961,18 +971,43 @@ MRTQ: 精神×緊張緩和×群×静
                     AIで分析する
                   </button>
                 )}
+                {!aiAnalysis && !aiLoading && logs.length < 3 && (
+                  <p style={{ fontSize: 13, color: "#b0a898", margin: 0, textAlign: "center" }}>あと{3 - logs.length}日記録するとAI分析できます</p>
+                )}
                 {aiLoading && (
                   <p style={{ fontSize: 13, color: "#9a80d0", textAlign: "center", margin: 0 }}>分析中...</p>
                 )}
                 {aiAnalysis && (
                   <>
-                    <div style={{ margin: "0 0 12px" }}>{renderMarkdown(aiAnalysis)}</div>
-                    <button
-                      onClick={runAiAnalysis}
-                      style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}
-                    >
-                      もう一度分析する
-                    </button>
+                    {(() => {
+                      const summaryMatch = aiAnalysis.match(/SUMMARY:(.*?)(?=DETAIL:|$)/s);
+                      const detailMatch = aiAnalysis.match(/DETAIL:(.*)/s);
+                      const summary = summaryMatch ? summaryMatch[1].trim() : aiAnalysis.split("\n")[0];
+                      const detail = detailMatch ? detailMatch[1].trim() : "";
+                      return (
+                        <>
+                          <p style={{ fontSize: 13, color: "#4a3a9a", lineHeight: 1.7, margin: "0 0 10px", fontWeight: 600 }}>{summary}</p>
+                          {detail && !showFullAnalysis && (
+                            <button onClick={() => setShowFullAnalysis(true)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                              もっと読む ▼
+                            </button>
+                          )}
+                          {detail && showFullAnalysis && (
+                            <>
+                              <div style={{ margin: "8px 0 10px" }}>{renderMarkdown(detail)}</div>
+                              <button onClick={() => setShowFullAnalysis(false)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                                閉じる ▲
+                              </button>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <div style={{ marginTop: 10 }}>
+                      <button onClick={() => { runAiAnalysis(); setShowFullAnalysis(false); }} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                        もう一度分析する
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
