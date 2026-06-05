@@ -245,6 +245,7 @@ export default function App() {
   const [resetMode, setResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     // Check auth state
@@ -732,70 +733,17 @@ MRTQ: 精神×緊張緩和×群×静
     </div>
   );
 
-  if (!user) return (
-    <div style={{ ...S.wrap, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-      <p style={{ fontSize: 24, fontWeight: 800, color: "#1a1a1a", margin: "0 0 4px" }}>崩れログ</p>
-      <p style={{ fontSize: 12, color: "#b0a898", margin: "0 0 32px" }}>朝起きたら1分だけ、昨日を振り返る</p>
-      
-      <div style={{ width: "100%", maxWidth: 320 }}>
-        <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 12, padding: 3, marginBottom: 20 }}>
-          <button onClick={() => setAuthMode("login")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "login" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "login" ? "#fff" : "transparent", color: authMode === "login" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>ログイン</button>
-          <button onClick={() => setAuthMode("signup")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "signup" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "signup" ? "#fff" : "transparent", color: authMode === "signup" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>新規登録</button>
-        </div>
-        
-        <input
-          type="email" placeholder="メールアドレス" value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }}
-        />
-        <input
-          type="password" placeholder="パスワード（6文字以上）" value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
-          style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }}
-        />
-        {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
-        <button onClick={handleAuth} style={{ width: "100%", padding: "13px", fontSize: 15, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>
-          {authMode === "login" ? "ログイン" : "アカウントを作成"}
-        </button>
-        {authMode === "login" && (
-          <button onClick={() => setResetMode(true)} style={{ width: "100%", marginTop: 10, fontSize: 12, color: "#aaa", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-            パスワードを忘れた
-          </button>
-        )}
-      </div>
 
-      {resetMode && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 24 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%" }}>
-            {resetSent ? (
-              <>
-                <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>メールを送りました</p>
-                <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px" }}>メールのリンクからパスワードを再設定してください</p>
-                <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>閉じる</button>
-              </>
-            ) : (
-              <>
-                <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>パスワード再設定</p>
-                <p style={{ fontSize: 13, color: "#888", margin: "0 0 16px" }}>登録したメールアドレスを入力してください</p>
-                <input type="email" placeholder="メールアドレス" value={email} onChange={(e) => setEmail(e.target.value)}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
-                {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
-                <button onClick={handleReset} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>送信する</button>
-                <button onClick={() => setResetMode(false)} style={{ width: "100%", padding: "12px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>キャンセル</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div style={S.wrap}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 2 }}>
         <p style={S.heading}>崩れログ</p>
-        <button onClick={handleLogout} style={{ fontSize: 11, color: "#aaa", background: "none", border: "1px solid #e4e0d8", borderRadius: 99, padding: "4px 12px", cursor: "pointer", marginTop: 4 }}>ログアウト</button>
+        {user ? (
+          <button onClick={handleLogout} style={{ fontSize: 11, color: "#aaa", background: "none", border: "1px solid #e4e0d8", borderRadius: 99, padding: "4px 12px", cursor: "pointer", marginTop: 4 }}>ログアウト</button>
+        ) : (
+          <button onClick={() => setShowAuthModal(true)} style={{ fontSize: 11, color: "#5a35c8", background: "none", border: "1px solid #d6ccf5", borderRadius: 99, padding: "4px 12px", cursor: "pointer", marginTop: 4 }}>ログイン</button>
+        )}
       </div>
       <p style={S.sub}>朝起きたら1分だけ、昨日を振り返る</p>
 
@@ -1250,6 +1198,54 @@ MRTQ: 精神×緊張緩和×群×静
           )}
         </div>
       )}
+      {showAuthModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%" }}>
+            <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 12, padding: 3, marginBottom: 16 }}>
+              <button onClick={() => setAuthMode("login")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "login" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "login" ? "#fff" : "transparent", color: authMode === "login" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>ログイン</button>
+              <button onClick={() => setAuthMode("signup")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "signup" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "signup" ? "#fff" : "transparent", color: authMode === "signup" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>新規登録</button>
+            </div>
+            <input type="email" placeholder="メールアドレス" value={email} onChange={(e) => setEmail(e.target.value)}
+              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+            <input type="password" placeholder="パスワード（6文字以上）" value={password} onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
+              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+            {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
+            <button onClick={async () => { await handleAuth(); if (!authError) setShowAuthModal(false); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>
+              {authMode === "login" ? "ログイン" : "アカウントを作成"}
+            </button>
+            {authMode === "login" && (
+              <button onClick={() => { setShowAuthModal(false); setResetMode(true); }} style={{ width: "100%", fontSize: 12, color: "#aaa", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", marginBottom: 8 }}>パスワードを忘れた</button>
+            )}
+            <button onClick={() => setShowAuthModal(false)} style={{ width: "100%", padding: "10px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>キャンセル</button>
+          </div>
+        </div>
+      )}
+
+      {resetMode && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%" }}>
+            {resetSent ? (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>メールを送りました</p>
+                <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px" }}>メールのリンクからパスワードを再設定してください</p>
+                <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>閉じる</button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>パスワード再設定</p>
+                <p style={{ fontSize: 13, color: "#888", margin: "0 0 16px" }}>登録したメールアドレスを入力してください</p>
+                <input type="email" placeholder="メールアドレス" value={email} onChange={(e) => setEmail(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+                {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
+                <button onClick={handleReset} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>送信する</button>
+                <button onClick={() => setResetMode(false)} style={{ width: "100%", padding: "12px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>キャンセル</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {showImport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
           <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%", textAlign: "center" }}>
