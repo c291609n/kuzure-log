@@ -242,6 +242,9 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     // Check auth state
@@ -670,7 +673,41 @@ MRTQ: 精神×緊張緩和×群×静
     });
   };
 
+  // Import existing localStorage data to Supabase
+  const handleImport = async () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) { alert("インポートするデータがありません"); return; }
+      const localLogs = JSON.parse(raw);
+      if (!localLogs.length) { alert("インポートするデータがありません"); return; }
+      
+      for (const l of localLogs) {
+        const dbEntry = {
+          user_id: user.id, date: l.date, sleep: l.sleep, fatigue: l.fatigue,
+          events: l.events || [], kuzure: l.kuzure, actions: l.actions || [],
+          motives: l.motives || [], memo: l.memo || "", recovery: l.recovery || [],
+          is_period: l.isPeriod || null, event_memo: l.eventMemo || "",
+        };
+        await supabase.from("logs").upsert(dbEntry, { onConflict: "user_id,date" });
+      }
+      await loadUserData(user.id);
+      setShowImport(false);
+      alert(`${localLogs.length}件のデータを引き継ぎました！`);
+    } catch (e) {
+      alert("引き継ぎに失敗しました");
+    }
+  };
+
   // Auth handlers
+  const handleReset = async () => {
+    setAuthError("");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://kuzure-log.vercel.app",
+    });
+    if (error) setAuthError(error.message);
+    else setResetSent(true);
+  };
+
   const handleAuth = async () => {
     setAuthError("");
     if (authMode === "signup") {
@@ -721,7 +758,36 @@ MRTQ: 精神×緊張緩和×群×静
         <button onClick={handleAuth} style={{ width: "100%", padding: "13px", fontSize: 15, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>
           {authMode === "login" ? "ログイン" : "アカウントを作成"}
         </button>
+        {authMode === "login" && (
+          <button onClick={() => setResetMode(true)} style={{ width: "100%", marginTop: 10, fontSize: 12, color: "#aaa", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+            パスワードを忘れた
+          </button>
+        )}
       </div>
+
+      {resetMode && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 24 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%" }}>
+            {resetSent ? (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>メールを送りました</p>
+                <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px" }}>メールのリンクからパスワードを再設定してください</p>
+                <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>閉じる</button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>パスワード再設定</p>
+                <p style={{ fontSize: 13, color: "#888", margin: "0 0 16px" }}>登録したメールアドレスを入力してください</p>
+                <input type="email" placeholder="メールアドレス" value={email} onChange={(e) => setEmail(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+                {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
+                <button onClick={handleReset} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>送信する</button>
+                <button onClick={() => setResetMode(false)} style={{ width: "100%", padding: "12px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>キャンセル</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1031,6 +1097,14 @@ MRTQ: 精神×緊張緩和×群×静
       {tab === "settings" && (
         <div>
           <div style={S.secWrap}>
+            <div style={S.secHead}><div style={S.secBar("#1a7ac0")}/><span style={S.secLabel}>データの引き継ぎ</span></div>
+            <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "14px 16px" }}>
+              <p style={{ fontSize: 13, color: "#1a1a1a", fontWeight: 600, margin: "0 0 4px" }}>ログイン前のデータを引き継ぐ</p>
+              <p style={{ fontSize: 12, color: "#b0a898", margin: "0 0 12px" }}>このブラウザに保存されているデータをアカウントに移行します</p>
+              <button onClick={() => setShowImport(true)} style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#1a7ac0", color: "#fff", cursor: "pointer" }}>データを引き継ぐ</button>
+            </div>
+          </div>
+          <div style={S.secWrap}>
             <div style={S.secHead}><div style={S.secBar("#e06b8e")}/><span style={S.secLabel}>生理周期の記録</span></div>
             <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "14px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1176,6 +1250,19 @@ MRTQ: 精神×緊張緩和×群×静
           )}
         </div>
       )}
+      {showImport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%", textAlign: "center" }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>データを引き継ぎますか？</p>
+            <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px" }}>このブラウザに保存されているログデータをアカウントに移行します。</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => setShowImport(false)} style={{ padding: "12px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>キャンセル</button>
+              <button onClick={handleImport} style={{ padding: "12px", fontSize: 14, border: "none", borderRadius: 12, background: "#1a7ac0", color: "#fff", fontWeight: 700, cursor: "pointer" }}>引き継ぐ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDelete && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
           <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%", textAlign: "center" }}>
