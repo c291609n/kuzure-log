@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "./supabase";
 
 const STORAGE_KEY = "kuzure_logs_v5";
 const RECOVERY_ORDER_KEY = "kuzure_recovery_order";
@@ -235,33 +236,68 @@ export default function App() {
   const [showOptional, setShowOptional] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingLog, setEditingLog] = useState(null); // the log entry being edited // { label, onConfirm }
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState("login"); // "login" | "signup"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setLogs(parsed);
-        if (parsed.length > 0 && parsed[0].date === todayStr()) setAlreadyLogged(true);
-      }
-      const orderRaw = localStorage.getItem(RECOVERY_ORDER_KEY);
-      if (orderRaw) setRecoveryItems(JSON.parse(orderRaw));
-      const evOrderRaw = localStorage.getItem(EVENTS_ORDER_KEY);
-      if (evOrderRaw) setEventItems(JSON.parse(evOrderRaw));
-      const actOrderRaw = localStorage.getItem(ACTIONS_ORDER_KEY);
-      if (actOrderRaw) setActionItems(JSON.parse(actOrderRaw));
-      const motOrderRaw = localStorage.getItem(MOTIVES_ORDER_KEY);
-      if (motOrderRaw) setMotiveItems(JSON.parse(motOrderRaw));
-      const savedType = localStorage.getItem("kuzure_recovery_type");
-      if (savedType && RECOVERY_TYPES[savedType]) setRecoveryTypeFull(RECOVERY_TYPES[savedType]);
-      const periodRaw = localStorage.getItem(PERIOD_KEY);
-      if (periodRaw) {
-        const pd = JSON.parse(periodRaw);
-        setTrackPeriod(pd.track || false);
-        setPeriodDates(pd.dates || []);
-      }
-    } catch {}
+    // Check auth state
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+      if (session?.user) loadUserData(session.user.id);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) loadUserData(session.user.id);
+    });
+    return () => subscription.unsubscribe();
   }, []);
+
+  const loadUserData = async (userId) => {
+    try {
+      // Load logs from Supabase
+      const { data: logsData } = await supabase
+        .from("logs")
+        .select("*")
+        .eq("user_id", userId)
+        .order("date", { ascending: false });
+      if (logsData) {
+        const mapped = logsData.map(l => ({
+          date: l.date, sleep: l.sleep, fatigue: l.fatigue,
+          events: l.events || [], kuzure: l.kuzure,
+          actions: l.actions || [], motives: l.motives || [],
+          memo: l.memo || "", recovery: l.recovery || [],
+          isPeriod: l.is_period, eventMemo: l.event_memo || "",
+          id: l.id,
+        }));
+        setLogs(mapped);
+        if (mapped.length > 0 && mapped[0].date === todayStr()) setAlreadyLogged(true);
+      }
+      // Load settings from localStorage
+      try {
+        const orderRaw = localStorage.getItem(RECOVERY_ORDER_KEY);
+        if (orderRaw) setRecoveryItems(JSON.parse(orderRaw));
+        const evOrderRaw = localStorage.getItem(EVENTS_ORDER_KEY);
+        if (evOrderRaw) setEventItems(JSON.parse(evOrderRaw));
+        const actOrderRaw = localStorage.getItem(ACTIONS_ORDER_KEY);
+        if (actOrderRaw) setActionItems(JSON.parse(actOrderRaw));
+        const motOrderRaw = localStorage.getItem(MOTIVES_ORDER_KEY);
+        if (motOrderRaw) setMotiveItems(JSON.parse(motOrderRaw));
+        const savedType = localStorage.getItem("kuzure_recovery_type");
+        if (savedType && RECOVERY_TYPES[savedType]) setRecoveryTypeFull(RECOVERY_TYPES[savedType]);
+        const periodRaw = localStorage.getItem(PERIOD_KEY);
+        if (periodRaw) {
+          const pd = JSON.parse(periodRaw);
+          setTrackPeriod(pd.track || false);
+          setPeriodDates(pd.dates || []);
+        }
+      } catch {}
+    } catch (e) { console.error(e); }
+  };
 
   useEffect(() => {
     try { localStorage.setItem(RECOVERY_ORDER_KEY, JSON.stringify(recoveryItems)); } catch {}
@@ -284,7 +320,11 @@ export default function App() {
   }, [motiveItems]);
 
   const todayStr = () => { const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
-  const saveLogs = (nl) => { setLogs(nl); try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nl)); } catch {} };
+  const saveLogs = async (nl) => {
+    setLogs(nl);
+    // Also save to localStorage as backup
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nl)); } catch {}
+  };
   const toggleEvent = (ev) => {
     if (ev === "特になし") { setEvents(["特になし"]); return; }
     setEvents((p) => { const w = p.filter((e) => e !== "特になし"); return w.includes(ev) ? w.filter((e) => e !== ev) : [...w, ev]; });
@@ -319,11 +359,29 @@ export default function App() {
   };
   const toggleMulti = (arr, setArr, val) => setArr((p) => p.includes(val) ? p.filter((v) => v !== val) : [...p, val]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!sleep || !fatigue || events.length === 0 || kuzure === null) { alert("全項目を選んでください"); return; }
     const dateToSave = selectedDate || todayStr();
     const entry = { date: dateToSave, sleep, fatigue, events, kuzure, actions, motives, memo, otherEvent, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
     if (trackPeriod && isPeriod) setPeriodDates((p) => p.includes(dateToSave) ? p : [...p, dateToSave]);
+    
+    // Save to Supabase if logged in
+    if (user) {
+      const dbEntry = {
+        user_id: user.id, date: dateToSave, sleep, fatigue,
+        events, kuzure, actions, motives, memo,
+        recovery, is_period: trackPeriod ? isPeriod : null, event_memo: eventMemo,
+      };
+      const existingLog = logs.find(l => l.date === dateToSave);
+      if (existingLog?.id) {
+        await supabase.from("logs").update(dbEntry).eq("id", existingLog.id);
+      } else {
+        await supabase.from("logs").insert(dbEntry);
+      }
+      // Reload logs
+      await loadUserData(user.id);
+    }
+    
     const newLogs = [entry, ...logs.filter(l => l.date !== dateToSave)];
     newLogs.sort((a, b) => new Date(b.date.replace(/\//g,"-")) - new Date(a.date.replace(/\//g,"-")));
     saveLogs(newLogs);
@@ -612,9 +670,67 @@ MRTQ: 精神×緊張緩和×群×静
     });
   };
 
+  // Auth handlers
+  const handleAuth = async () => {
+    setAuthError("");
+    if (authMode === "signup") {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) setAuthError(error.message);
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setAuthError("メールアドレスかパスワードが違います");
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setLogs([]);
+    setAlreadyLogged(false);
+  };
+
+  if (authLoading) return (
+    <div style={{ ...S.wrap, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+      <p style={{ color: "#aaa", fontSize: 14 }}>読み込み中...</p>
+    </div>
+  );
+
+  if (!user) return (
+    <div style={{ ...S.wrap, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+      <p style={{ fontSize: 24, fontWeight: 800, color: "#1a1a1a", margin: "0 0 4px" }}>崩れログ</p>
+      <p style={{ fontSize: 12, color: "#b0a898", margin: "0 0 32px" }}>朝起きたら1分だけ、昨日を振り返る</p>
+      
+      <div style={{ width: "100%", maxWidth: 320 }}>
+        <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 12, padding: 3, marginBottom: 20 }}>
+          <button onClick={() => setAuthMode("login")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "login" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "login" ? "#fff" : "transparent", color: authMode === "login" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>ログイン</button>
+          <button onClick={() => setAuthMode("signup")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "signup" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "signup" ? "#fff" : "transparent", color: authMode === "signup" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>新規登録</button>
+        </div>
+        
+        <input
+          type="email" placeholder="メールアドレス" value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }}
+        />
+        <input
+          type="password" placeholder="パスワード（6文字以上）" value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
+          style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }}
+        />
+        {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
+        <button onClick={handleAuth} style={{ width: "100%", padding: "13px", fontSize: 15, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>
+          {authMode === "login" ? "ログイン" : "アカウントを作成"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={S.wrap}>
-      <p style={S.heading}>崩れログ</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 2 }}>
+        <p style={S.heading}>崩れログ</p>
+        <button onClick={handleLogout} style={{ fontSize: 11, color: "#aaa", background: "none", border: "1px solid #e4e0d8", borderRadius: 99, padding: "4px 12px", cursor: "pointer", marginTop: 4 }}>ログアウト</button>
+      </div>
       <p style={S.sub}>朝起きたら1分だけ、昨日を振り返る</p>
 
       <div style={S.tabs}>
