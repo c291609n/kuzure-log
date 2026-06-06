@@ -12,8 +12,11 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify(req.body),
     });
     const data = await response.json();
+    console.log('API response status:', response.status);
+    console.log('API response:', JSON.stringify(data).slice(0, 200));
     res.status(200).json(data);
   } catch (e) {
+    console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
 }
