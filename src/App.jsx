@@ -323,7 +323,7 @@ export default function App() {
     try { localStorage.setItem(MOTIVES_ORDER_KEY, JSON.stringify(motiveItems)); } catch {}
   }, [motiveItems]);
 
-  const todayStr = () => { const d = new Date(); return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`; };
+  const todayStr = () => { const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
   const saveLogs = async (nl) => {
     setLogs(nl);
     // Also save to localStorage as backup
@@ -540,7 +540,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5",
+          model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
           messages: [{
             role: "user",
@@ -628,7 +628,7 @@ ${JSON.stringify(summary, null, 2)}`
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5",
+          model: "claude-sonnet-4-20250514",
           max_tokens: 100,
           temperature: 0,
           messages: [{
@@ -1191,7 +1191,8 @@ MRTQ: 精神×緊張緩和×群×静
               {logs.slice(0,20).map((e,i) => (
                 <div key={i} style={S.logCard}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{e.date}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{prevDay(e.date)}のできごと</span>
+                      <span style={{ fontSize: 10, color: "#ccc" }}>{e.date}記録</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 11, color: "#b0a898" }}>{(e.events||[]).join(" / ")}</span>
                       <button onClick={() => openEdit(e)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #e4e0d8", background: "#fff", color: "#888", cursor: "pointer" }}>編集</button>
