@@ -786,7 +786,7 @@ MRTQ: 精神×緊張緩和×群×静
             <span style={{ fontSize: 12, color: "#888", flexShrink: 0 }}>記録する日</span>
             <input
               type="date"
-              value={selectedDate ? selectedDate.replace(/\//g, "-") : (() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toISOString().split("T")[0]; })()}
+              value={selectedDate ? selectedDate.replace(/\//g, "-") : new Date().toISOString().split("T")[0]}
               onChange={(e) => {
                 const d = e.target.value;
                 setSelectedDate(d.replace(/-/g, "/"));
