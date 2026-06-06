@@ -382,13 +382,13 @@ export default function App() {
       } else {
         await supabase.from("logs").insert(dbEntry);
       }
-      // Reload logs
+      // Reload logs from Supabase only
       await loadUserData(user.id);
+    } else {
+      const newLogs = [entry, ...logs.filter(l => l.date !== dateToSave)];
+      newLogs.sort((a, b) => new Date(b.date.replace(/\//g,"-")) - new Date(a.date.replace(/\//g,"-")));
+      saveLogs(newLogs);
     }
-    
-    const newLogs = [entry, ...logs.filter(l => l.date !== dateToSave)];
-    newLogs.sort((a, b) => new Date(b.date.replace(/\//g,"-")) - new Date(a.date.replace(/\//g,"-")));
-    saveLogs(newLogs);
     setSleep(null); setFatigue(null); setEvents([]); setKuzure(null);
     setActions([]); setMotives([]); setMemo(""); setOtherEvent(""); setRecovery([]); setIsPeriod(false); setEventMemo("");
     if (dateToSave === todayStr()) setAlreadyLogged(true);
@@ -419,6 +419,18 @@ export default function App() {
     const v = newRecoveryInput.trim();
     if (v && !recoveryItems.includes(v)) setRecoveryItems((p) => [...p, v]);
     setNewRecoveryInput("");
+  };
+
+  const deleteLog = async (date) => {
+    if (user) {
+      const log = logs.find(l => l.date === date);
+      if (log?.id) await supabase.from("logs").delete().eq("id", log.id);
+      await loadUserData(user.id);
+    } else {
+      const newLogs = logs.filter(l => l.date !== date);
+      saveLogs(newLogs);
+    }
+    setConfirmDelete(null);
   };
 
   const deleteRecovery = (r) => {
@@ -524,7 +536,7 @@ export default function App() {
         メモ: l.memo || "",
       }));
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -576,6 +588,7 @@ ${JSON.stringify(summary, null, 2)}`
   };
 
   const [recoveryTypeFull, setRecoveryTypeFull] = useState(null);
+  const [diagnosedAt, setDiagnosedAt] = useState(null);
   const [typeLoading, setTypeLoading] = useState(false);
   const [showAllTypes, setShowAllTypes] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -611,7 +624,7 @@ ${JSON.stringify(summary, null, 2)}`
         生理中: l.isPeriod ? "あり" : "なし",
       }));
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -651,7 +664,13 @@ MRTQ: 精神×緊張緩和×群×静
       const matched = Object.keys(RECOVERY_TYPES).find(k => code.includes(k));
       if (matched) {
         setRecoveryTypeFull(RECOVERY_TYPES[matched]);
-        try { localStorage.setItem("kuzure_recovery_type", matched); } catch(e) {}
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+        setDiagnosedAt(dateStr);
+        try { 
+          localStorage.setItem("kuzure_recovery_type", matched);
+          localStorage.setItem("kuzure_recovery_type_date", dateStr);
+        } catch(e) {}
       }
     } catch (e) {
       console.error(e);
@@ -1078,34 +1097,6 @@ MRTQ: 精神×緊張緩和×群×静
             <p style={{ textAlign: "center", color: "#aaa", fontSize: 14, paddingTop: 40 }}>まだ記録がありません</p>
           ) : (
             <>
-              {logs.slice(0,10).map((e,i) => (
-                <div key={i} style={S.logCard}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{e.date}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 11, color: "#b0a898" }}>{(e.events||[]).join(" / ")}</span>
-                      <button onClick={() => openEdit(e)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #e4e0d8", background: "#fff", color: "#888", cursor: "pointer" }}>編集</button>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#aaa", marginBottom: 8 }}>
-                    <span>睡眠 <b style={{ color: "#5a35c8" }}>{e.sleep}/5</b></span>
-                    <span>疲労 <b style={{ color: "#c04820" }}>{FATIGUE_LABELS[e.fatigue]}</b></span>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap" }}>
-                    {e.kuzure
-                      ? <><span style={S.tag("#fff0ee","#c02020")}>崩れあり</span>{(e.actions||[]).map((a)=><span key={a} style={S.tag("#fff0ee","#c02020")}>{a}</span>)}</>
-                      : <span style={S.tag("#f0ecff","#5a35c8")}>崩れなし</span>
-                    }
-                  </div>
-                  {(e.recovery||[]).length>0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", marginTop: 4 }}>
-                      {(e.recovery||[]).map((r)=><span key={r} style={S.tag("#edfaf2","#1a6030")}>{r}</span>)}
-                    </div>
-                  )}
-                  {e.eventMemo && <p style={{ fontSize: 12, color: "#aaa", margin: "6px 0 0", lineHeight: 1.5 }}>{e.eventMemo}</p>}
-                  {e.memo && <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0", lineHeight: 1.5 }}>{e.memo}</p>}
-                </div>
-              ))}
               <div style={S.patternBox}>
                 <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
                 {!aiAnalysis && !aiLoading && logs.length >= 3 && (
@@ -1173,10 +1164,13 @@ MRTQ: 精神×緊張緩和×群×静
                       <p style={{ fontSize: 20, fontWeight: 900, color: recoveryTypeFull.color, margin: "0 0 2px", fontFamily: "monospace", letterSpacing: "0.1em" }}>{Object.keys(RECOVERY_TYPES).find(k => RECOVERY_TYPES[k] === recoveryTypeFull)}</p>
                       <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "0 0 4px" }}>{recoveryTypeFull.name}</p>
                       <p style={{ fontSize: 10, color: "#999", margin: 0 }}>{recoveryTypeFull.jp}</p>
+                      {diagnosedAt && <p style={{ fontSize: 10, color: "#bbb", margin: "2px 0 0" }}>{diagnosedAt}時点（{logs.length}日分）</p>}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-                    <button onClick={(e) => { e.stopPropagation(); runTypeAnalysis(); }} style={{ fontSize: 11, color: "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>再診断する</button>
+                    <button onClick={(e) => { e.stopPropagation(); runTypeAnalysis(); }} style={{ fontSize: 11, color: typeLoading ? "#ccc" : "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                      {typeLoading ? "診断中..." : "再診断する"}
+                    </button>
                     <button onClick={(e) => { e.stopPropagation(); setShowAllTypes(true); }} style={{ fontSize: 11, color: "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>全タイプを見る</button>
                   </div>
                 </div>
@@ -1194,6 +1188,35 @@ MRTQ: 精神×緊張緩和×群×静
                   )}
                 </div>
               )}
+              {logs.slice(0,20).map((e,i) => (
+                <div key={i} style={S.logCard}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{e.date}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11, color: "#b0a898" }}>{(e.events||[]).join(" / ")}</span>
+                      <button onClick={() => openEdit(e)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #e4e0d8", background: "#fff", color: "#888", cursor: "pointer" }}>編集</button>
+                      <button onClick={() => setConfirmDelete({ label: e.date, onConfirm: () => deleteLog(e.date) })} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #ffd0d0", background: "#fff", color: "#c02020", cursor: "pointer" }}>削除</button>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#aaa", marginBottom: 8 }}>
+                    <span>睡眠 <b style={{ color: "#5a35c8" }}>{e.sleep}/5</b></span>
+                    <span>疲労 <b style={{ color: "#c04820" }}>{FATIGUE_LABELS[e.fatigue]}</b></span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap" }}>
+                    {e.kuzure
+                      ? <><span style={S.tag("#fff0ee","#c02020")}>崩れあり</span>{(e.actions||[]).map((a)=><span key={a} style={S.tag("#fff0ee","#c02020")}>{a}</span>)}</>
+                      : <span style={S.tag("#f0ecff","#5a35c8")}>崩れなし</span>
+                    }
+                  </div>
+                  {(e.recovery||[]).length>0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", marginTop: 4 }}>
+                      {(e.recovery||[]).map((r)=><span key={r} style={S.tag("#edfaf2","#1a6030")}>{r}</span>)}
+                    </div>
+                  )}
+                  {e.eventMemo && <p style={{ fontSize: 12, color: "#aaa", margin: "6px 0 0", lineHeight: 1.5 }}>{e.eventMemo}</p>}
+                  {e.memo && <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0", lineHeight: 1.5 }}>{e.memo}</p>}
+                </div>
+              ))}
             </>
           )}
         </div>
