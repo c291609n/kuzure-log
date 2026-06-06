@@ -536,7 +536,7 @@ export default function App() {
         メモ: l.memo || "",
       }));
 
-      const res = await fetch("/api/analyze.cjs", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -624,7 +624,7 @@ ${JSON.stringify(summary, null, 2)}`
         生理中: l.isPeriod ? "あり" : "なし",
       }));
 
-      const res = await fetch("/api/analyze.cjs", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
