@@ -757,6 +757,17 @@ MRTQ: 精神×緊張緩和×群×静
     else setResetSent(true);
   };
 
+  const [resendMsg, setResendMsg] = useState("");
+
+  const isUnconfirmedError = (error) =>
+    error?.code === "email_not_confirmed" || /not confirmed/i.test(error?.message || "");
+
+  const handleResendConfirm = async () => {
+    setResendMsg("");
+    const { error } = await supabase.auth.resend({ type: "signup", email });
+    setResendMsg(error ? "再送に失敗しました" : "確認メールを再送しました");
+  };
+
   const handleAuth = async () => {
     setAuthError("");
     if (authMode === "signup") {
@@ -766,13 +777,15 @@ MRTQ: 精神×緊張緩和×群×静
         // Logged in immediately (email confirmation off)
         setShowAuthModal(false);
       } else {
-        // Email confirmation required — make this clearly visible
+        // Email confirmation required — still "仮登録", make it clearly visible
         setSignupDone(true);
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setAuthError("メールアドレスかパスワードが違います");
-      else setShowAuthModal(false);
+      if (!error) { setShowAuthModal(false); return; }
+      // Unconfirmed account tried to log in → guide to complete 本登録, not "wrong password"
+      if (isUnconfirmedError(error)) setSignupDone(true);
+      else setAuthError("メールアドレスかパスワードが違います");
     }
   };
 
@@ -1272,10 +1285,13 @@ MRTQ: 精神×緊張緩和×群×静
             {signupDone ? (
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: 40, margin: "0 0 8px" }}>📩</p>
-                <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "0 0 8px" }}>確認メールを送りました</p>
-                <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px", lineHeight: 1.6 }}>{email} 宛のメールに届いたリンクを開くと、アカウントが有効になります。リンクを開いたあと、もう一度ログインしてください。</p>
-                <button onClick={() => { setSignupDone(false); setAuthMode("login"); setPassword(""); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>ログイン画面へ</button>
-                <button onClick={() => { setSignupDone(false); setShowAuthModal(false); setBrowserOnly(true); }} style={{ width: "100%", padding: "10px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>閉じる</button>
+                <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "0 0 8px" }}>あと一歩！まだ「仮登録」です</p>
+                <p style={{ fontSize: 13, color: "#888", margin: "0 0 8px", lineHeight: 1.6 }}>{email} に確認メールを送りました。メール内のリンクを開くと<b style={{color:"#1a1a1a"}}>本登録が完了</b>します。そのあとログインしてください。</p>
+                <p style={{ fontSize: 12, color: "#c08", margin: "0 0 18px", lineHeight: 1.5 }}>※リンクを開くまではログインできません</p>
+                <button onClick={() => { setSignupDone(false); setResendMsg(""); setAuthMode("login"); setPassword(""); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>ログイン画面へ</button>
+                <button onClick={handleResendConfirm} style={{ width: "100%", padding: "10px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer", marginBottom: 8 }}>確認メールを再送する</button>
+                {resendMsg && <p style={{ fontSize: 12, color: "#5a35c8", margin: "0 0 8px" }}>{resendMsg}</p>}
+                <button onClick={() => { setSignupDone(false); setResendMsg(""); setShowAuthModal(false); setBrowserOnly(true); }} style={{ width: "100%", padding: "10px", fontSize: 13, border: "none", background: "none", color: "#bbb", cursor: "pointer" }}>閉じる</button>
               </div>
             ) : (
               <>
