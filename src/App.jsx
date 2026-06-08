@@ -15,6 +15,20 @@ const ACTIONS_DEFAULT = ["爆食い", "スマホ延々", "そのまま寝落ち"
 const MOTIVES_DEFAULT = ["だるい", "そわそわ", "しんどい", "何もしたくない", "めんどくさい", "わかんない"];
 const RECOVERY_DEFAULT = ["入浴", "運動", "音楽を聴く", "友達と話す", "外出"];
 
+// History dashboard sections (user-reorderable)
+const SECTION_ORDER_KEY = "kuzure_section_order_v1";
+const SECTION_DEFAULT_ORDER = ["summary", "streak", "pattern", "type", "report", "heatmap", "logs", "badges"];
+const SECTION_META = {
+  summary: { label: "今月のふりかえり", emoji: "📊" },
+  streak: { label: "連続記録", emoji: "🔥" },
+  pattern: { label: "パターン分析", emoji: "🔮" },
+  type: { label: "回復タイプ", emoji: "🧭" },
+  report: { label: "月次レポート", emoji: "📖" },
+  heatmap: { label: "ヒートマップ", emoji: "🟥" },
+  logs: { label: "ログ", emoji: "📝" },
+  badges: { label: "実績", emoji: "🏅" },
+};
+
 // ── SVG face icons ───────────────────────────────────────
 // Sleep: 1=wide awake/wired, 2=tired, 3=neutral, 4=relaxed, 5=deeply asleep
 const SleepFace = ({ level, color }) => {
@@ -266,6 +280,33 @@ export default function App() {
   useEffect(() => {
     if (!authLoading && !user && !browserOnly) setShowAuthModal(true);
   }, [authLoading, user, browserOnly]);
+
+  // Load / persist the user's dashboard section order.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SECTION_ORDER_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw).filter((k) => SECTION_DEFAULT_ORDER.includes(k));
+        const merged = [...saved, ...SECTION_DEFAULT_ORDER.filter((k) => !saved.includes(k))];
+        setSectionOrder(merged);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SECTION_ORDER_KEY, JSON.stringify(sectionOrder)); } catch {}
+  }, [sectionOrder]);
+
+  const onSecDragEnd = () => {
+    if (dragSec.current !== null && dragSecOver !== null && dragSec.current !== dragSecOver) {
+      setSectionOrder((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(dragSec.current, 1);
+        next.splice(dragSecOver, 0, moved);
+        return next;
+      });
+    }
+    dragSec.current = null; setDragSecOver(null);
+  };
 
   const loadUserData = async (userId) => {
     try {
@@ -537,6 +578,10 @@ export default function App() {
   const [closedMonths, setClosedMonths] = useState({});
   const [logsView, setLogsView] = useState("list");
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
+  const [reorderMode, setReorderMode] = useState(false);
+  const [sectionOrder, setSectionOrder] = useState(SECTION_DEFAULT_ORDER);
+  const dragSec = useRef(null);
+  const [dragSecOver, setDragSecOver] = useState(null);
   const [reportMonth, setReportMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
   const [reports, setReports] = useState({});
   const [reportLoading, setReportLoading] = useState(false);
@@ -1030,6 +1075,282 @@ ${JSON.stringify(data, null, 2)}`
     );
   };
 
+  // Compact locked row shown for AI sections when logged out.
+  const aiLockRow = (label) => (
+    <div onClick={() => setShowAuthModal(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f3effb", border: "1.5px solid #e0d8f5", borderRadius: 12, padding: "11px 14px", marginBottom: 12, cursor: "pointer" }}>
+      <span style={{ fontSize: 15 }}>🔒</span>
+      <span style={{ fontSize: 12.5, color: "#7a5fd0", fontWeight: 600, flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 11, color: "#9a8fc0", textDecoration: "underline" }}>ログイン</span>
+    </div>
+  );
+
+  // Renders one dashboard section by key (used by the reorderable history tab).
+  const renderSection = (key) => {
+    if (key === "summary") {
+      const s = computeSummary();
+      const diff = s.kuzure - s.prevKuzure;
+      const diffLabel = diff === 0 ? "±0" : diff < 0 ? `↓${-diff}` : `↑${diff}`;
+      const diffColor = diff < 0 ? "#1a8a4a" : diff > 0 ? "#c02020" : "#aaa";
+      return (
+        <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 12px" }}>{s.month}月のふりかえり</p>
+          <div style={{ display: "flex" }}>
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <p style={{ fontSize: 24, fontWeight: 800, color: "#e0503a", margin: 0, lineHeight: 1 }}>{s.kuzure}<span style={{ fontSize: 12, fontWeight: 400, color: "#aaa" }}>回</span></p>
+              <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>崩れ</p>
+              {s.hasPrev && <p style={{ fontSize: 10, color: diffColor, margin: "2px 0 0", fontWeight: 700 }}>先月{s.prevKuzure}回 {diffLabel}</p>}
+            </div>
+            <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
+              <p style={{ fontSize: 16, fontWeight: 800, color: "#c04820", margin: 0, lineHeight: 1.5 }}>{s.days ? FATIGUE_LABELS[Math.round(s.avgFatigue)] : "—"}</p>
+              <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>平均疲労</p>
+            </div>
+            <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
+              <p style={{ fontSize: 24, fontWeight: 800, color: "#1a1a1a", margin: 0, lineHeight: 1 }}>{s.days}<span style={{ fontSize: 12, fontWeight: 400, color: "#aaa" }}>日</span></p>
+              <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>記録</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (key === "streak") {
+      const streak = computeStreak();
+      if (streak < 2) return null;
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#fff3e0,#ffe2c4)", border: "1.5px solid #f5c98a", borderRadius: 14, padding: "12px 16px", marginBottom: 12 }}>
+          <span style={{ fontSize: 26 }}>🔥</span>
+          <div>
+            <p style={{ fontSize: 16, fontWeight: 800, color: "#c05a00", margin: 0 }}>{streak}日連続で記録中！</p>
+            <p style={{ fontSize: 11, color: "#c08a50", margin: "2px 0 0" }}>この調子で続けよう</p>
+          </div>
+        </div>
+      );
+    }
+    if (key === "pattern") {
+      if (!user) return aiLockRow("AIパターン分析（ログインで解放）");
+      return (
+        <div style={{ ...S.patternBox, marginTop: 0, marginBottom: 12 }}>
+          <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
+          {!aiAnalysis && !aiLoading && logs.length >= 3 && (
+            <button onClick={runAiAnalysis} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>AIで分析する</button>
+          )}
+          {!aiAnalysis && !aiLoading && logs.length < 3 && (
+            <p style={{ fontSize: 13, color: "#b0a898", margin: 0, textAlign: "center" }}>あと{3 - logs.length}日記録するとAI分析できます</p>
+          )}
+          {aiLoading && <p style={{ fontSize: 13, color: "#9a80d0", textAlign: "center", margin: 0 }}>分析中...</p>}
+          {aiAnalysis && (
+            <>
+              {(() => {
+                const { summary, points } = parseAnalysis(aiAnalysis);
+                return (
+                  <>
+                    <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 10 : 0 }}>
+                      <span style={{ fontSize: 18, lineHeight: 1.5, flexShrink: 0 }}>💡</span>
+                      <p style={{ fontSize: 14.5, color: "#3a2a7a", lineHeight: 1.75, margin: 0, fontWeight: 700 }}>{summary}</p>
+                    </div>
+                    {points.length > 0 && !showFullAnalysis && (
+                      <button onClick={() => setShowFullAnalysis(true)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>くわしく見る ▼</button>
+                    )}
+                    {points.length > 0 && showFullAnalysis && (
+                      <>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 9, margin: "4px 0 10px" }}>
+                          {points.map((p, i) => (
+                            <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #ece6f8", borderLeft: "3px solid #5a35c8" }}>
+                              {p.title && <p style={{ fontSize: 13.5, fontWeight: 800, color: "#5a35c8", margin: "0 0 5px", letterSpacing: "-0.2px" }}>{p.title}</p>}
+                              <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.8, margin: 0 }}>{p.body}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <button onClick={() => setShowFullAnalysis(false)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>閉じる ▲</button>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+              <div style={{ marginTop: 12 }}>
+                <button onClick={() => { runAiAnalysis(); setShowFullAnalysis(false); }} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>もう一度分析する</button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+    if (key === "type") {
+      if (!user) return aiLockRow("回復タイプ診断（ログインで解放）");
+      return (
+        <div style={{ marginBottom: 12 }}>
+          {logs.length < 7 ? (
+            <div style={{ background: "#faf7ff", border: "1.5px dashed #d6ccf5", borderRadius: 16, padding: "16px", textAlign: "center" }}>
+              <p style={{ fontSize: 13, color: "#b0a898", margin: 0 }}>7日間記録すると</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: "#5a35c8", margin: "4px 0 0" }}>回復タイプが診断されます</p>
+              <p style={{ fontSize: 11, color: "#c0b8d0", margin: "6px 0 0" }}>あと{Math.max(0, 7 - logs.length)}日</p>
+            </div>
+          ) : recoveryTypeFull ? (
+            <div onClick={() => setSelectedType({ code: Object.keys(RECOVERY_TYPES).find(k => RECOVERY_TYPES[k] === recoveryTypeFull), ...recoveryTypeFull })}
+              style={{ background: recoveryTypeFull.color + "15", border: `1.5px solid ${recoveryTypeFull.color}55`, borderRadius: 16, padding: "16px", cursor: "pointer" }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: recoveryTypeFull.color, letterSpacing: "0.12em", margin: "0 0 8px" }}>あなたの回復タイプ　→ タップで詳細</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 40 }}>{recoveryTypeFull.emoji}</span>
+                <div>
+                  <p style={{ fontSize: 20, fontWeight: 900, color: recoveryTypeFull.color, margin: "0 0 2px", fontFamily: "monospace", letterSpacing: "0.1em" }}>{Object.keys(RECOVERY_TYPES).find(k => RECOVERY_TYPES[k] === recoveryTypeFull)}</p>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "0 0 4px" }}>{recoveryTypeFull.name}</p>
+                  <p style={{ fontSize: 10, color: "#999", margin: 0 }}>{recoveryTypeFull.jp}</p>
+                  {diagnosedAt && <p style={{ fontSize: 10, color: "#bbb", margin: "2px 0 0" }}>{diagnosedAt}時点（{logs.length}日分）</p>}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+                <button onClick={(e) => { e.stopPropagation(); runTypeAnalysis(); }} style={{ fontSize: 11, color: typeLoading ? "#ccc" : "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>{typeLoading ? "診断中..." : "再診断する"}</button>
+                <button onClick={(e) => { e.stopPropagation(); setShowAllTypes(true); }} style={{ fontSize: 11, color: "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>全タイプを見る</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: "#faf7ff", border: "1.5px dashed #d6ccf5", borderRadius: 16, padding: "16px", textAlign: "center" }}>
+              {typeLoading ? (
+                <p style={{ fontSize: 13, color: "#9a80d0", margin: 0 }}>診断中...</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13, color: "#b0a898", margin: "0 0 10px" }}>7日分のデータが揃いました</p>
+                  <button onClick={runTypeAnalysis} style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer", marginBottom: 8 }}>回復タイプを診断する</button>
+                  <br/>
+                  <button onClick={() => setShowAllTypes(true)} style={{ fontSize: 11, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>全タイプを先に見る</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+    if (key === "report") {
+      if (!user) return aiLockRow("月次レポート（ログインで解放）");
+      const y = reportMonth.getFullYear(), m = reportMonth.getMonth();
+      const mk = `${y}/${m + 1}`;
+      const monthLogs = logs.filter((l) => monthKeyOf(l.date) === mk);
+      const now = new Date();
+      const atCurrent = y === now.getFullYear() && m === now.getMonth();
+      const report = reports[mk];
+      const navBtn = (dir) => () => { setReportMonth(new Date(y, m + dir, 1)); };
+      return (
+        <div style={{ background: "linear-gradient(135deg,#f3effb,#efe9fb)", border: "1.5px solid #d6ccf5", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#5a35c8", letterSpacing: "0.04em" }}>📖 月次レポート</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={navBtn(-1)} style={{ fontSize: 13, width: 24, height: 24, border: "1px solid #d6ccf5", borderRadius: 8, background: "#fff", color: "#7a5fd0", cursor: "pointer" }}>‹</button>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#5a35c8", minWidth: 38, textAlign: "center" }}>{y}/{m + 1}</span>
+              <button onClick={navBtn(1)} disabled={atCurrent} style={{ fontSize: 13, width: 24, height: 24, border: "1px solid #d6ccf5", borderRadius: 8, background: "#fff", color: atCurrent ? "#ccc" : "#7a5fd0", cursor: atCurrent ? "default" : "pointer" }}>›</button>
+            </div>
+          </div>
+          {report && report !== "__LOGIN__" && report !== "__FAIL__" ? (() => {
+            const { summary, points, next } = parseReport(report);
+            return (
+              <>
+                <div style={{ background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 9 : 0 }}>
+                  <p style={{ fontSize: 14.5, color: "#3a2a7a", lineHeight: 1.75, margin: 0, fontWeight: 700 }}>{summary}</p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {points.map((p, i) => (
+                    <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #ece6f8", borderLeft: "3px solid #5a35c8" }}>
+                      {p.title && <p style={{ fontSize: 13.5, fontWeight: 800, color: "#5a35c8", margin: "0 0 5px" }}>{p.title}</p>}
+                      <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.8, margin: 0 }}>{p.body}</p>
+                    </div>
+                  ))}
+                </div>
+                {next && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#eaf6ea", border: "1.5px solid #bfe3bf", borderRadius: 12, padding: "11px 13px", marginTop: 9 }}>
+                    <span style={{ fontSize: 16 }}>🌱</span>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#3a8a4a", margin: "0 0 3px" }}>来月へのヒント</p>
+                      <p style={{ fontSize: 13, color: "#3a6a3a", lineHeight: 1.7, margin: 0 }}>{next}</p>
+                    </div>
+                  </div>
+                )}
+                <button onClick={runMonthlyReport} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0, marginTop: 10 }}>もう一度作る</button>
+              </>
+            );
+          })() : reportLoading ? (
+            <p style={{ fontSize: 13, color: "#9a80d0", textAlign: "center", margin: "6px 0" }}>作成中...</p>
+          ) : monthLogs.length < 3 ? (
+            <p style={{ fontSize: 13, color: "#9a8fc0", textAlign: "center", margin: "6px 0" }}>{y}/{m + 1}の記録が3日分たまるとレポートが作れます（今{monthLogs.length}日）</p>
+          ) : (
+            <>
+              <button onClick={runMonthlyReport} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>{m + 1}月のレポートを作る（{monthLogs.length}日分）</button>
+              {report === "__FAIL__" && <p style={{ fontSize: 12, color: "#c02020", textAlign: "center", margin: "8px 0 0" }}>作成に失敗しました。もう一度お試しください。</p>}
+            </>
+          )}
+        </div>
+      );
+    }
+    if (key === "heatmap") return <div style={{ marginBottom: 12 }}>{renderHeatmap()}</div>;
+    if (key === "logs") {
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 8px" }}>
+            <div style={{ ...S.secHead, marginBottom: 0 }}><div style={S.secBar("#1a1a1a")}/><span style={S.secLabel}>{logsView === "calendar" ? "カレンダー" : showAllLogs ? "すべてのログ" : "最近のログ"}</span></div>
+            <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 10, padding: 2 }}>
+              {[["list", "リスト"], ["calendar", "カレンダー"]].map(([v, label]) => (
+                <button key={v} onClick={() => { setLogsView(v); setOpenLogKey(null); }} style={{ padding: "5px 12px", fontSize: 12, fontWeight: logsView === v ? 700 : 400, border: "none", borderRadius: 8, background: logsView === v ? "#fff" : "transparent", color: logsView === v ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          {logsView === "calendar" ? (
+            <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px" }}>{renderCalendar()}</div>
+          ) : !showAllLogs ? (
+            <>
+              <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "2px 14px" }}>
+                {logs.slice(0, 5).map((e) => <LogRow key={e.id || e.date} e={e} />)}
+              </div>
+              {logs.length > 5 && (
+                <button onClick={() => { setShowAllLogs(true); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 10, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>すべて見る（{logs.length}件）▾</button>
+              )}
+            </>
+          ) : (
+            <>
+              {groupByMonth().map((g) => {
+                const openM = !closedMonths[g.key];
+                return (
+                  <div key={g.key} style={{ marginBottom: 8 }}>
+                    <div onClick={() => setClosedMonths((p) => ({ ...p, [g.key]: !p[g.key] }))} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 2px", cursor: "pointer", borderBottom: "1.5px solid #e8e2d8" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{g.key}</span>
+                      <span style={{ fontSize: 11, color: "#aaa" }}>{g.items.length}件　{openM ? "▾" : "▸"}</span>
+                    </div>
+                    {openM && (
+                      <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderTop: "none", borderRadius: "0 0 12px 12px", padding: "2px 14px" }}>
+                        {g.items.map((e) => <LogRow key={e.id || e.date} e={e} />)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <button onClick={() => { setShowAllLogs(false); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 4, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>折りたたむ ▲</button>
+            </>
+          )}
+        </div>
+      );
+    }
+    if (key === "badges") {
+      const stats = computeBadgeStats();
+      const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
+      return (
+        <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
+            <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+            {BADGES.map((b) => {
+              const got = b.earned(stats);
+              return (
+                <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
+                  <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
+                  <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   // Import existing localStorage data to Supabase
   const handleImport = async () => {
     if (!user) { alert("先にログインしてください"); return; }
@@ -1480,307 +1801,25 @@ ${JSON.stringify(data, null, 2)}`
             <p style={{ textAlign: "center", color: "#aaa", fontSize: 14, paddingTop: 40 }}>まだ記録がありません</p>
           ) : (
             <>
-              {(() => {
-                const s = computeSummary();
-                const diff = s.kuzure - s.prevKuzure;
-                const diffLabel = diff === 0 ? "±0" : diff < 0 ? `↓${-diff}` : `↑${diff}`;
-                const diffColor = diff < 0 ? "#1a8a4a" : diff > 0 ? "#c02020" : "#aaa";
-                return (
-                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 12px" }}>{s.month}月のふりかえり</p>
-                    <div style={{ display: "flex" }}>
-                      <div style={{ flex: 1, textAlign: "center" }}>
-                        <p style={{ fontSize: 24, fontWeight: 800, color: "#e0503a", margin: 0, lineHeight: 1 }}>{s.kuzure}<span style={{ fontSize: 12, fontWeight: 400, color: "#aaa" }}>回</span></p>
-                        <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>崩れ</p>
-                        {s.hasPrev && <p style={{ fontSize: 10, color: diffColor, margin: "2px 0 0", fontWeight: 700 }}>先月{s.prevKuzure}回 {diffLabel}</p>}
-                      </div>
-                      <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
-                        <p style={{ fontSize: 16, fontWeight: 800, color: "#c04820", margin: 0, lineHeight: 1.5 }}>{s.days ? FATIGUE_LABELS[Math.round(s.avgFatigue)] : "—"}</p>
-                        <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>平均疲労</p>
-                      </div>
-                      <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
-                        <p style={{ fontSize: 24, fontWeight: 800, color: "#1a1a1a", margin: 0, lineHeight: 1 }}>{s.days}<span style={{ fontSize: 12, fontWeight: 400, color: "#aaa" }}>日</span></p>
-                        <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>記録</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ストリーク */}
-              {(() => {
-                const streak = computeStreak();
-                if (streak < 2) return null;
-                return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#fff3e0,#ffe2c4)", border: "1.5px solid #f5c98a", borderRadius: 14, padding: "12px 16px", marginBottom: 12 }}>
-                    <span style={{ fontSize: 26 }}>🔥</span>
-                    <div>
-                      <p style={{ fontSize: 16, fontWeight: 800, color: "#c05a00", margin: 0 }}>{streak}日連続で記録中！</p>
-                      <p style={{ fontSize: 11, color: "#c08a50", margin: "2px 0 0" }}>この調子で続けよう</p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* AI機能（ログイン特典）: 未ログインは1行に畳む */}
-              {!user ? (
-                <div style={{ background: "linear-gradient(135deg,#f3effb,#efe9fb)", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>🔒</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: "#5a35c8", margin: "0 0 2px" }}>AI機能はログインで解放</p>
-                    <p style={{ fontSize: 11, color: "#9a8fc0", margin: 0 }}>月次レポート・パターン分析・回復タイプ診断　<span onClick={() => setShowAllTypes(true)} style={{ textDecoration: "underline", cursor: "pointer" }}>全タイプを見る</span></p>
-                  </div>
-                  <button onClick={() => setShowAuthModal(true)} style={{ fontSize: 12, fontWeight: 700, padding: "8px 14px", border: "none", borderRadius: 10, background: "#5a35c8", color: "#fff", cursor: "pointer", flexShrink: 0 }}>ログイン</button>
-                </div>
-              ) : (<>
-
-              {/* AI月次レポート */}
-              {(() => {
-                const y = reportMonth.getFullYear(), m = reportMonth.getMonth();
-                const mk = `${y}/${m + 1}`;
-                const monthLogs = logs.filter((l) => monthKeyOf(l.date) === mk);
-                const now = new Date();
-                const atCurrent = y === now.getFullYear() && m === now.getMonth();
-                const report = reports[mk];
-                const navBtn = (dir) => () => { setReportMonth(new Date(y, m + dir, 1)); };
-                return (
-                  <div style={{ background: "linear-gradient(135deg,#f3effb,#efe9fb)", border: "1.5px solid #d6ccf5", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "#5a35c8", letterSpacing: "0.04em" }}>📖 月次レポート</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <button onClick={navBtn(-1)} style={{ fontSize: 13, width: 24, height: 24, border: "1px solid #d6ccf5", borderRadius: 8, background: "#fff", color: "#7a5fd0", cursor: "pointer" }}>‹</button>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#5a35c8", minWidth: 38, textAlign: "center" }}>{y}/{m + 1}</span>
-                        <button onClick={navBtn(1)} disabled={atCurrent} style={{ fontSize: 13, width: 24, height: 24, border: "1px solid #d6ccf5", borderRadius: 8, background: "#fff", color: atCurrent ? "#ccc" : "#7a5fd0", cursor: atCurrent ? "default" : "pointer" }}>›</button>
-                      </div>
-                    </div>
-                    {report && report !== "__LOGIN__" && report !== "__FAIL__" ? (() => {
-                      const { summary, points, next } = parseReport(report);
-                      return (
-                        <>
-                          <div style={{ background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 9 : 0 }}>
-                            <p style={{ fontSize: 14.5, color: "#3a2a7a", lineHeight: 1.75, margin: 0, fontWeight: 700 }}>{summary}</p>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                            {points.map((p, i) => (
-                              <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #ece6f8", borderLeft: "3px solid #5a35c8" }}>
-                                {p.title && <p style={{ fontSize: 13.5, fontWeight: 800, color: "#5a35c8", margin: "0 0 5px" }}>{p.title}</p>}
-                                <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.8, margin: 0 }}>{p.body}</p>
-                              </div>
-                            ))}
-                          </div>
-                          {next && (
-                            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#eaf6ea", border: "1.5px solid #bfe3bf", borderRadius: 12, padding: "11px 13px", marginTop: 9 }}>
-                              <span style={{ fontSize: 16 }}>🌱</span>
-                              <div>
-                                <p style={{ fontSize: 11, fontWeight: 700, color: "#3a8a4a", margin: "0 0 3px" }}>来月へのヒント</p>
-                                <p style={{ fontSize: 13, color: "#3a6a3a", lineHeight: 1.7, margin: 0 }}>{next}</p>
-                              </div>
-                            </div>
-                          )}
-                          <button onClick={runMonthlyReport} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0, marginTop: 10 }}>もう一度作る</button>
-                        </>
-                      );
-                    })() : reportLoading ? (
-                      <p style={{ fontSize: 13, color: "#9a80d0", textAlign: "center", margin: "6px 0" }}>作成中...</p>
-                    ) : !user ? (
-                      <div style={{ textAlign: "center" }}>
-                        <p style={{ fontSize: 13, color: "#7a5fd0", margin: "0 0 10px", lineHeight: 1.6 }}>🔒 月の終わりに、AIがその月をふりかえってくれます。<b>ログイン</b>で使えます</p>
-                        <button onClick={() => setShowAuthModal(true)} style={{ width: "100%", padding: "11px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>ログイン / 新規登録</button>
-                      </div>
-                    ) : monthLogs.length < 3 ? (
-                      <p style={{ fontSize: 13, color: "#9a8fc0", textAlign: "center", margin: "6px 0" }}>{y}/{m + 1}の記録が3日分たまるとレポートが作れます（今{monthLogs.length}日）</p>
-                    ) : (
-                      <>
-                        <button onClick={runMonthlyReport} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>{m + 1}月のレポートを作る（{monthLogs.length}日分）</button>
-                        {report === "__FAIL__" && <p style={{ fontSize: 12, color: "#c02020", textAlign: "center", margin: "8px 0 0" }}>作成に失敗しました。もう一度お試しください。</p>}
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <div style={S.patternBox}>
-                <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
-                {!aiAnalysis && !aiLoading && logs.length >= 3 && user && (
-                  <button
-                    onClick={runAiAnalysis}
-                    style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}
-                  >
-                    AIで分析する
-                  </button>
-                )}
-                {!aiAnalysis && !aiLoading && logs.length >= 3 && !user && (
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ fontSize: 13, color: "#7a5fd0", margin: "0 0 10px", lineHeight: 1.6 }}>🔒 AIパターン分析は<b>ログイン</b>すると使えます</p>
-                    <button onClick={() => setShowAuthModal(true)} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>ログイン / 新規登録</button>
-                  </div>
-                )}
-                {!aiAnalysis && !aiLoading && logs.length < 3 && (
-                  <p style={{ fontSize: 13, color: "#b0a898", margin: 0, textAlign: "center" }}>あと{3 - logs.length}日記録するとAI分析できます</p>
-                )}
-                {aiLoading && (
-                  <p style={{ fontSize: 13, color: "#9a80d0", textAlign: "center", margin: 0 }}>分析中...</p>
-                )}
-                {aiAnalysis && (
-                  <>
-                    {(() => {
-                      const { summary, points } = parseAnalysis(aiAnalysis);
-                      return (
-                        <>
-                          <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 10 : 0 }}>
-                            <span style={{ fontSize: 18, lineHeight: 1.5, flexShrink: 0 }}>💡</span>
-                            <p style={{ fontSize: 14.5, color: "#3a2a7a", lineHeight: 1.75, margin: 0, fontWeight: 700 }}>{summary}</p>
-                          </div>
-                          {points.length > 0 && !showFullAnalysis && (
-                            <button onClick={() => setShowFullAnalysis(true)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-                              くわしく見る ▼
-                            </button>
-                          )}
-                          {points.length > 0 && showFullAnalysis && (
-                            <>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 9, margin: "4px 0 10px" }}>
-                                {points.map((p, i) => (
-                                  <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #ece6f8", borderLeft: "3px solid #5a35c8" }}>
-                                    {p.title && <p style={{ fontSize: 13.5, fontWeight: 800, color: "#5a35c8", margin: "0 0 5px", letterSpacing: "-0.2px" }}>{p.title}</p>}
-                                    <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.8, margin: 0 }}>{p.body}</p>
-                                  </div>
-                                ))}
-                              </div>
-                              <button onClick={() => setShowFullAnalysis(false)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-                                閉じる ▲
-                              </button>
-                            </>
-                          )}
-                        </>
-                      );
-                    })()}
-                    <div style={{ marginTop: 12 }}>
-                      <button onClick={() => { runAiAnalysis(); setShowFullAnalysis(false); }} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-                        もう一度分析する
-                      </button>
-                    </div>
-                  </>
-                )}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <button onClick={() => setReorderMode((v) => !v)} style={{ fontSize: 12, color: reorderMode ? "#fff" : "#888", background: reorderMode ? "#5a35c8" : "#fff", border: "1.5px solid #e4e0d8", borderRadius: 99, padding: "5px 14px", cursor: "pointer", fontWeight: 600 }}>{reorderMode ? "完了 ✓" : "並び替え ⇅"}</button>
               </div>
-              {logs.length < 7 ? (
-                <div style={{ background: "#faf7ff", border: "1.5px dashed #d6ccf5", borderRadius: 16, padding: "16px", marginTop: 10, textAlign: "center" }}>
-                  <p style={{ fontSize: 13, color: "#b0a898", margin: 0 }}>7日間記録すると</p>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: "#5a35c8", margin: "4px 0 0" }}>回復タイプが診断されます</p>
-                  <p style={{ fontSize: 11, color: "#c0b8d0", margin: "6px 0 0" }}>あと{Math.max(0, 7-logs.length)}日</p>
-                </div>
-              ) : recoveryTypeFull ? (
-                <div
-                  onClick={() => setSelectedType({code: Object.keys(RECOVERY_TYPES).find(k => RECOVERY_TYPES[k] === recoveryTypeFull), ...recoveryTypeFull})}
-                  style={{ background: recoveryTypeFull.color + "15", border: `1.5px solid ${recoveryTypeFull.color}55`, borderRadius: 16, padding: "16px", marginTop: 10, cursor: "pointer" }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: recoveryTypeFull.color, letterSpacing: "0.12em", margin: "0 0 8px" }}>あなたの回復タイプ　→ タップで詳細</p>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 40 }}>{recoveryTypeFull.emoji}</span>
-                    <div>
-                      <p style={{ fontSize: 20, fontWeight: 900, color: recoveryTypeFull.color, margin: "0 0 2px", fontFamily: "monospace", letterSpacing: "0.1em" }}>{Object.keys(RECOVERY_TYPES).find(k => RECOVERY_TYPES[k] === recoveryTypeFull)}</p>
-                      <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "0 0 4px" }}>{recoveryTypeFull.name}</p>
-                      <p style={{ fontSize: 10, color: "#999", margin: 0 }}>{recoveryTypeFull.jp}</p>
-                      {diagnosedAt && <p style={{ fontSize: 10, color: "#bbb", margin: "2px 0 0" }}>{diagnosedAt}時点（{logs.length}日分）</p>}
+              {reorderMode ? (
+                <div>
+                  <p style={{ fontSize: 12, color: "#9a9080", textAlign: "center", margin: "0 0 12px" }}>ドラッグして表示順を入れ替えできます</p>
+                  {sectionOrder.map((k, i) => (
+                    <div key={k} draggable onDragStart={() => { dragSec.current = i; }} onDragEnter={() => setDragSecOver(i)} onDragEnd={onSecDragEnd} onDragOver={(e) => e.preventDefault()}
+                      style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1.5px solid #e4e0d8", borderRadius: 12, padding: "14px 16px", marginBottom: 8, cursor: "grab", opacity: dragSecOver === i ? 0.5 : 1 }}>
+                      <span style={{ fontSize: 18 }}>{SECTION_META[k].emoji}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#1a1a1a", flex: 1 }}>{SECTION_META[k].label}</span>
+                      <span style={{ fontSize: 18, color: "#ccc" }}>⇅</span>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-                    <button onClick={(e) => { e.stopPropagation(); runTypeAnalysis(); }} style={{ fontSize: 11, color: typeLoading ? "#ccc" : "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-                      {typeLoading ? "診断中..." : "再診断する"}
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); setShowAllTypes(true); }} style={{ fontSize: 11, color: "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>全タイプを見る</button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ background: "#faf7ff", border: "1.5px dashed #d6ccf5", borderRadius: 16, padding: "16px", marginTop: 10, textAlign: "center" }}>
-                  {typeLoading ? (
-                    <p style={{ fontSize: 13, color: "#9a80d0", margin: 0 }}>診断中...</p>
-                  ) : user ? (
-                    <>
-                      <p style={{ fontSize: 13, color: "#b0a898", margin: "0 0 10px" }}>7日分のデータが揃いました</p>
-                      <button onClick={runTypeAnalysis} style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer", marginBottom: 8 }}>回復タイプを診断する</button>
-                      <br/>
-                      <button onClick={() => setShowAllTypes(true)} style={{ fontSize: 11, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>全タイプを先に見る</button>
-                    </>
-                  ) : (
-                    <>
-                      <p style={{ fontSize: 13, color: "#7a5fd0", margin: "0 0 10px", lineHeight: 1.6 }}>🔒 回復タイプ診断は<b>ログイン</b>すると使えます</p>
-                      <button onClick={() => setShowAuthModal(true)} style={{ padding: "10px 20px", fontSize: 13, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer", marginBottom: 8 }}>ログイン / 新規登録</button>
-                      <br/>
-                      <button onClick={() => setShowAllTypes(true)} style={{ fontSize: 11, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>全タイプを先に見る</button>
-                    </>
-                  )}
-                </div>
-              )}
-              </>)}
-
-              {renderHeatmap()}
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "22px 0 8px" }}>
-                <div style={{ ...S.secHead, marginBottom: 0 }}><div style={S.secBar("#1a1a1a")}/><span style={S.secLabel}>{logsView === "calendar" ? "カレンダー" : showAllLogs ? "すべてのログ" : "最近のログ"}</span></div>
-                <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 10, padding: 2 }}>
-                  {[["list", "リスト"], ["calendar", "カレンダー"]].map(([v, label]) => (
-                    <button key={v} onClick={() => { setLogsView(v); setOpenLogKey(null); }} style={{ padding: "5px 12px", fontSize: 12, fontWeight: logsView === v ? 700 : 400, border: "none", borderRadius: 8, background: logsView === v ? "#fff" : "transparent", color: logsView === v ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>{label}</button>
                   ))}
+                  <button onClick={() => setSectionOrder(SECTION_DEFAULT_ORDER)} style={{ width: "100%", padding: "10px", marginTop: 6, fontSize: 12, color: "#999", border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", cursor: "pointer" }}>初期の並びに戻す</button>
                 </div>
-              </div>
-              {logsView === "calendar" ? (
-                <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px" }}>
-                  {renderCalendar()}
-                </div>
-              ) : !showAllLogs ? (
-                <>
-                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "2px 14px" }}>
-                    {logs.slice(0, 5).map((e) => <LogRow key={e.id || e.date} e={e} />)}
-                  </div>
-                  {logs.length > 5 && (
-                    <button onClick={() => { setShowAllLogs(true); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 10, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>すべて見る（{logs.length}件）▾</button>
-                  )}
-                </>
               ) : (
-                <>
-                  {groupByMonth().map((g) => {
-                    const openM = !closedMonths[g.key];
-                    return (
-                      <div key={g.key} style={{ marginBottom: 8 }}>
-                        <div onClick={() => setClosedMonths((p) => ({ ...p, [g.key]: !p[g.key] }))} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 2px", cursor: "pointer", borderBottom: "1.5px solid #e8e2d8" }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{g.key}</span>
-                          <span style={{ fontSize: 11, color: "#aaa" }}>{g.items.length}件　{openM ? "▾" : "▸"}</span>
-                        </div>
-                        {openM && (
-                          <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderTop: "none", borderRadius: "0 0 12px 12px", padding: "2px 14px" }}>
-                            {g.items.map((e) => <LogRow key={e.id || e.date} e={e} />)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <button onClick={() => { setShowAllLogs(false); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 4, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>折りたたむ ▲</button>
-                </>
+                sectionOrder.map((k) => <div key={k}>{renderSection(k)}</div>)
               )}
-
-              {/* 実績バッジ */}
-              {(() => {
-                const stats = computeBadgeStats();
-                const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
-                return (
-                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
-                      <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-                      {BADGES.map((b) => {
-                        const got = b.earned(stats);
-                        return (
-                          <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
-                            <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
-                            <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
             </>
           )}
         </div>
