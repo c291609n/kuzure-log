@@ -531,6 +531,19 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
 
+  // AI analysis is a login-only feature — attach the user's token so the API can verify it.
+  const callAnalyze = async (payload) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return fetch("/api/analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+  };
+
   const runAiAnalysis = async () => {
     if (logs.length < 3) return;
     setAiLoading(true);
@@ -549,10 +562,7 @@ export default function App() {
         メモ: l.memo || "",
       }));
 
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await callAnalyze({
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
           messages: [{
@@ -570,8 +580,8 @@ export default function App() {
 データ：
 ${JSON.stringify(summary, null, 2)}`
           }]
-        })
-      });
+        });
+      if (res.status === 401) { setAiAnalysis("AI分析はログインすると使えます。"); setAiLoading(false); return; }
       const data = await res.json();
       const text = (data.content||[]).map((c) => c.text||"").join("");
       setAiAnalysis(text || "分析に失敗しました。もう一度試してください。");
@@ -637,10 +647,7 @@ ${JSON.stringify(summary, null, 2)}`
         生理中: l.isPeriod ? "あり" : "なし",
       }));
 
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await callAnalyze({
           model: "claude-sonnet-4-6",
           max_tokens: 100,
           temperature: 0,
@@ -670,8 +677,8 @@ MRTQ: 精神×緊張緩和×群×静
 
 コードだけ返してください（例：PE-SQ）`
           }]
-        })
-      });
+        });
+      if (res.status === 401) { setTypeLoading(false); return; }
       const data = await res.json();
       const code = (data.content||[]).map((c) => c.text||"").join("").trim().toUpperCase();
       const matched = Object.keys(RECOVERY_TYPES).find(k => code.includes(k));
@@ -1157,13 +1164,19 @@ MRTQ: 精神×緊張緩和×群×静
             <>
               <div style={S.patternBox}>
                 <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
-                {!aiAnalysis && !aiLoading && logs.length >= 3 && (
+                {!aiAnalysis && !aiLoading && logs.length >= 3 && user && (
                   <button
                     onClick={runAiAnalysis}
                     style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}
                   >
                     AIで分析する
                   </button>
+                )}
+                {!aiAnalysis && !aiLoading && logs.length >= 3 && !user && (
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ fontSize: 13, color: "#7a5fd0", margin: "0 0 10px", lineHeight: 1.6 }}>🔒 AIパターン分析は<b>ログイン</b>すると使えます</p>
+                    <button onClick={() => setShowAuthModal(true)} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>ログイン / 新規登録</button>
+                  </div>
                 )}
                 {!aiAnalysis && !aiLoading && logs.length < 3 && (
                   <p style={{ fontSize: 13, color: "#b0a898", margin: 0, textAlign: "center" }}>あと{3 - logs.length}日記録するとAI分析できます</p>
@@ -1236,10 +1249,17 @@ MRTQ: 精神×緊張緩和×群×静
                 <div style={{ background: "#faf7ff", border: "1.5px dashed #d6ccf5", borderRadius: 16, padding: "16px", marginTop: 10, textAlign: "center" }}>
                   {typeLoading ? (
                     <p style={{ fontSize: 13, color: "#9a80d0", margin: 0 }}>診断中...</p>
-                  ) : (
+                  ) : user ? (
                     <>
                       <p style={{ fontSize: 13, color: "#b0a898", margin: "0 0 10px" }}>7日分のデータが揃いました</p>
                       <button onClick={runTypeAnalysis} style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer", marginBottom: 8 }}>回復タイプを診断する</button>
+                      <br/>
+                      <button onClick={() => setShowAllTypes(true)} style={{ fontSize: 11, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>全タイプを先に見る</button>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: 13, color: "#7a5fd0", margin: "0 0 10px", lineHeight: 1.6 }}>🔒 回復タイプ診断は<b>ログイン</b>すると使えます</p>
+                      <button onClick={() => setShowAuthModal(true)} style={{ padding: "10px 20px", fontSize: 13, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer", marginBottom: 8 }}>ログイン / 新規登録</button>
                       <br/>
                       <button onClick={() => setShowAllTypes(true)} style={{ fontSize: 11, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>全タイプを先に見る</button>
                     </>
