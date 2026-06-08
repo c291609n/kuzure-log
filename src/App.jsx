@@ -532,6 +532,9 @@ export default function App() {
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [showAllLogs, setShowAllLogs] = useState(false);
+  const [openLogKey, setOpenLogKey] = useState(null);
+  const [closedMonths, setClosedMonths] = useState({});
 
   // AI analysis is a login-only feature — attach the user's token so the API can verify it.
   const callAnalyze = async (payload) => {
@@ -713,6 +716,80 @@ MRTQ: 精神×緊張緩和×群×静
         </p>
       );
     });
+  };
+
+  // ── history helpers ──────────────────────────────────────
+  const shortDate = (d) => { const p = d.split("/"); return `${+p[1]}/${+p[2]}`; };
+  const monthLabel = (d) => { const p = d.split("/"); return `${p[0]}年${+p[1]}月`; };
+  const monthKeyOf = (d) => { const p = d.split("/"); return `${+p[0]}/${+p[1]}`; };
+
+  // This month vs last month: kuzure count, days recorded, avg fatigue.
+  const computeSummary = () => {
+    const now = new Date();
+    const curKey = `${now.getFullYear()}/${now.getMonth() + 1}`;
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevKey = `${prev.getFullYear()}/${prev.getMonth() + 1}`;
+    const cur = logs.filter((l) => monthKeyOf(l.date) === curKey);
+    const pre = logs.filter((l) => monthKeyOf(l.date) === prevKey);
+    const kuzureCount = (arr) => arr.filter((l) => l.kuzure).length;
+    const avg = (arr) => (arr.length ? arr.reduce((s, l) => s + (l.fatigue || 0), 0) / arr.length : 0);
+    return { month: now.getMonth() + 1, days: cur.length, kuzure: kuzureCount(cur), prevKuzure: kuzureCount(pre), hasPrev: pre.length > 0, avgFatigue: avg(cur) };
+  };
+
+  // Group logs (already sorted desc) into months, preserving order.
+  const groupByMonth = () => {
+    const groups = [];
+    const idx = {};
+    logs.forEach((l) => {
+      const mk = monthLabel(l.date);
+      if (idx[mk] === undefined) { idx[mk] = groups.length; groups.push({ key: mk, items: [] }); }
+      groups[idx[mk]].items.push(l);
+    });
+    return groups;
+  };
+
+  // Compact one-line log row that expands to full detail on tap.
+  const LogRow = ({ e }) => {
+    const open = openLogKey === (e.id || e.date);
+    const btn = { fontSize: 11, padding: "3px 10px", borderRadius: 99, background: "#fff", cursor: "pointer" };
+    return (
+      <div style={{ borderBottom: "1px solid #f0ece4" }}>
+        <div onClick={() => setOpenLogKey(open ? null : (e.id || e.date))}
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 2px", cursor: "pointer" }}>
+          <span style={{ fontSize: 12, color: "#999", width: 38, flexShrink: 0 }}>{shortDate(e.date)}</span>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: e.kuzure ? "#e0503a" : "#cfc8bc", flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: "#666", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(e.events || []).join("・") || "—"}</span>
+          <span style={{ fontSize: 15, color: "#ccc", transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>›</span>
+        </div>
+        {open && (
+          <div style={{ padding: "2px 2px 14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: "#bbb" }}>{prevDay(e.date)}のできごと・{e.date}記録</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => openEdit(e)} style={{ ...btn, border: "1px solid #e4e0d8", color: "#888" }}>編集</button>
+                <button onClick={() => setConfirmDelete({ label: e.date, onConfirm: () => deleteLog(e.date) })} style={{ ...btn, border: "1px solid #ffd0d0", color: "#c02020" }}>削除</button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#aaa", marginBottom: 8 }}>
+              <span>睡眠 <b style={{ color: "#5a35c8" }}>{e.sleep}/5</b></span>
+              <span>疲労 <b style={{ color: "#c04820" }}>{FATIGUE_LABELS[e.fatigue]}</b></span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap" }}>
+              {e.kuzure
+                ? <><span style={S.tag("#fff0ee", "#c02020")}>崩れあり</span>{(e.actions || []).map((a) => <span key={a} style={S.tag("#fff0ee", "#c02020")}>{a}</span>)}</>
+                : <span style={S.tag("#f0ecff", "#5a35c8")}>崩れなし</span>}
+            </div>
+            {(e.recovery || []).length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", marginTop: 4 }}>
+                {(e.recovery || []).map((r) => <span key={r} style={S.tag("#edfaf2", "#1a6030")}>{r}</span>)}
+              </div>
+            )}
+            {e.eventMemo && <p style={{ fontSize: 12, color: "#aaa", margin: "6px 0 0", lineHeight: 1.5 }}>{e.eventMemo}</p>}
+            {e.memo && <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0", lineHeight: 1.5 }}>{e.memo}</p>}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Import existing localStorage data to Supabase
@@ -1165,6 +1242,32 @@ MRTQ: 精神×緊張緩和×群×静
             <p style={{ textAlign: "center", color: "#aaa", fontSize: 14, paddingTop: 40 }}>まだ記録がありません</p>
           ) : (
             <>
+              {(() => {
+                const s = computeSummary();
+                const diff = s.kuzure - s.prevKuzure;
+                const diffLabel = diff === 0 ? "±0" : diff < 0 ? `↓${-diff}` : `↑${diff}`;
+                const diffColor = diff < 0 ? "#1a8a4a" : diff > 0 ? "#c02020" : "#aaa";
+                return (
+                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 12px" }}>{s.month}月のふりかえり</p>
+                    <div style={{ display: "flex" }}>
+                      <div style={{ flex: 1, textAlign: "center" }}>
+                        <p style={{ fontSize: 24, fontWeight: 800, color: "#e0503a", margin: 0, lineHeight: 1 }}>{s.kuzure}<span style={{ fontSize: 12, fontWeight: 400, color: "#aaa" }}>回</span></p>
+                        <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>崩れ</p>
+                        {s.hasPrev && <p style={{ fontSize: 10, color: diffColor, margin: "2px 0 0", fontWeight: 700 }}>先月{s.prevKuzure}回 {diffLabel}</p>}
+                      </div>
+                      <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
+                        <p style={{ fontSize: 16, fontWeight: 800, color: "#c04820", margin: 0, lineHeight: 1.5 }}>{s.days ? FATIGUE_LABELS[Math.round(s.avgFatigue)] : "—"}</p>
+                        <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>平均疲労</p>
+                      </div>
+                      <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
+                        <p style={{ fontSize: 24, fontWeight: 800, color: "#1a1a1a", margin: 0, lineHeight: 1 }}>{s.days}<span style={{ fontSize: 12, fontWeight: 400, color: "#aaa" }}>日</span></p>
+                        <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>記録</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={S.patternBox}>
                 <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
                 {!aiAnalysis && !aiLoading && logs.length >= 3 && user && (
@@ -1269,36 +1372,37 @@ MRTQ: 精神×緊張緩和×群×静
                   )}
                 </div>
               )}
-              {logs.slice(0,20).map((e,i) => (
-                <div key={i} style={S.logCard}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{prevDay(e.date)}のできごと</span>
-                      <span style={{ fontSize: 10, color: "#ccc" }}>{e.date}記録</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 11, color: "#b0a898" }}>{(e.events||[]).join(" / ")}</span>
-                      <button onClick={() => openEdit(e)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #e4e0d8", background: "#fff", color: "#888", cursor: "pointer" }}>編集</button>
-                      <button onClick={() => setConfirmDelete({ label: e.date, onConfirm: () => deleteLog(e.date) })} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #ffd0d0", background: "#fff", color: "#c02020", cursor: "pointer" }}>削除</button>
-                    </div>
+              <div style={{ ...S.secHead, margin: "22px 0 2px" }}><div style={S.secBar("#1a1a1a")}/><span style={S.secLabel}>{showAllLogs ? "すべてのログ" : "最近のログ"}</span></div>
+              {!showAllLogs ? (
+                <>
+                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "2px 14px" }}>
+                    {logs.slice(0, 5).map((e) => <LogRow key={e.id || e.date} e={e} />)}
                   </div>
-                  <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#aaa", marginBottom: 8 }}>
-                    <span>睡眠 <b style={{ color: "#5a35c8" }}>{e.sleep}/5</b></span>
-                    <span>疲労 <b style={{ color: "#c04820" }}>{FATIGUE_LABELS[e.fatigue]}</b></span>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap" }}>
-                    {e.kuzure
-                      ? <><span style={S.tag("#fff0ee","#c02020")}>崩れあり</span>{(e.actions||[]).map((a)=><span key={a} style={S.tag("#fff0ee","#c02020")}>{a}</span>)}</>
-                      : <span style={S.tag("#f0ecff","#5a35c8")}>崩れなし</span>
-                    }
-                  </div>
-                  {(e.recovery||[]).length>0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", marginTop: 4 }}>
-                      {(e.recovery||[]).map((r)=><span key={r} style={S.tag("#edfaf2","#1a6030")}>{r}</span>)}
-                    </div>
+                  {logs.length > 5 && (
+                    <button onClick={() => { setShowAllLogs(true); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 10, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>すべて見る（{logs.length}件）▾</button>
                   )}
-                  {e.eventMemo && <p style={{ fontSize: 12, color: "#aaa", margin: "6px 0 0", lineHeight: 1.5 }}>{e.eventMemo}</p>}
-                  {e.memo && <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0", lineHeight: 1.5 }}>{e.memo}</p>}
-                </div>
-              ))}
+                </>
+              ) : (
+                <>
+                  {groupByMonth().map((g) => {
+                    const openM = !closedMonths[g.key];
+                    return (
+                      <div key={g.key} style={{ marginBottom: 8 }}>
+                        <div onClick={() => setClosedMonths((p) => ({ ...p, [g.key]: !p[g.key] }))} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 2px", cursor: "pointer", borderBottom: "1.5px solid #e8e2d8" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{g.key}</span>
+                          <span style={{ fontSize: 11, color: "#aaa" }}>{g.items.length}件　{openM ? "▾" : "▸"}</span>
+                        </div>
+                        {openM && (
+                          <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderTop: "none", borderRadius: "0 0 12px 12px", padding: "2px 14px" }}>
+                            {g.items.map((e) => <LogRow key={e.id || e.date} e={e} />)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button onClick={() => { setShowAllLogs(false); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 4, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>折りたたむ ▲</button>
+                </>
+              )}
             </>
           )}
         </div>
