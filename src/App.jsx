@@ -583,7 +583,10 @@ export default function App() {
 出力フォーマット（このラベルは必ず使う）：
 SUMMARY: 最も重要な気づきを1文で
 DETAIL:
-詳細な気づきを2〜3個、1個につき1行で。各行は自然な文章で、行間は空けない
+詳細な気づきを2〜3個。各行は「見出し｜本文」の形式で書くこと。
+見出しは12文字以内で、思わず読みたくなるキャッチーな小見出し（例：週明けの落とし穴、睡眠が崩れの引き金）。
+本文はその見出しの内容を、データを根拠に1〜2文で。
+区切りは全角の縦棒「｜」を必ず使い、行間は空けない。
 
 データ：
 ${JSON.stringify(summary, null, 2)}`
@@ -720,7 +723,12 @@ MRTQ: 精神×緊張緩和×群×静
     const dm = raw.match(/DETAIL[:：]?\s*([\s\S]*)/i);
     const summary = cleanLine((sm ? sm[1] : (raw.split("\n")[0] || "")).trim());
     const detailRaw = (dm ? dm[1] : "").trim();
-    const points = detailRaw.split("\n").map(cleanLine).filter((l) => l.length > 1);
+    const points = detailRaw.split("\n").map(cleanLine).filter((l) => l.length > 1).map((l) => {
+      const parts = l.split(/[｜|]/);
+      return parts.length >= 2
+        ? { title: parts[0].trim(), body: parts.slice(1).join("").trim() }
+        : { title: "", body: l };
+    });
     return { summary, points };
   };
 
@@ -1313,11 +1321,11 @@ MRTQ: 精神×緊張緩和×群×静
                           )}
                           {points.length > 0 && showFullAnalysis && (
                             <>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "4px 0 10px" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 9, margin: "4px 0 10px" }}>
                                 {points.map((p, i) => (
-                                  <div key={i} style={{ display: "flex", gap: 10, background: "#fff", borderRadius: 12, padding: "11px 13px", border: "1px solid #ece6f8" }}>
-                                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: "50%", background: "#5a35c8", color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span>
-                                    <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.75, margin: 0 }}>{p}</p>
+                                  <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #ece6f8", borderLeft: "3px solid #5a35c8" }}>
+                                    {p.title && <p style={{ fontSize: 13.5, fontWeight: 800, color: "#5a35c8", margin: "0 0 5px", letterSpacing: "-0.2px" }}>{p.title}</p>}
+                                    <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.8, margin: 0 }}>{p.body}</p>
                                   </div>
                                 ))}
                               </div>
