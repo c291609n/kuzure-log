@@ -537,6 +537,9 @@ export default function App() {
   const [closedMonths, setClosedMonths] = useState({});
   const [logsView, setLogsView] = useState("list");
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
+  const [reportMonth, setReportMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
+  const [reports, setReports] = useState({});
+  const [reportLoading, setReportLoading] = useState(false);
 
   // AI analysis is a login-only feature — attach the user's token so the API can verify it.
   const callAnalyze = async (payload) => {
@@ -733,6 +736,67 @@ MRTQ: 精神×緊張緩和×群×静
         : { title: "", body: l };
     });
     return { summary, points };
+  };
+
+  // Monthly report: summary + insight cards + a hint for next month.
+  const parseReport = (raw) => {
+    const sm = raw.match(/SUMMARY[:：]?\s*([\s\S]*?)(?=DETAIL|NEXT|$)/i);
+    const dm = raw.match(/DETAIL[:：]?\s*([\s\S]*?)(?=NEXT|$)/i);
+    const nm = raw.match(/NEXT[:：]?\s*([\s\S]*)/i);
+    const summary = cleanLine((sm ? sm[1] : "").trim());
+    const points = (dm ? dm[1] : "").trim().split("\n").map(cleanLine).filter((l) => l.length > 1).map((l) => {
+      const p = l.split(/[｜|]/);
+      return p.length >= 2 ? { title: p[0].trim(), body: p.slice(1).join("").trim() } : { title: "", body: l };
+    });
+    const next = (nm ? nm[1] : "").trim().split("\n").map(cleanLine).filter(Boolean).join(" ");
+    return { summary, points, next };
+  };
+
+  const runMonthlyReport = async () => {
+    const y = reportMonth.getFullYear(), m = reportMonth.getMonth();
+    const mk = `${y}/${m + 1}`;
+    const monthLogs = logs.filter((l) => monthKeyOf(l.date) === mk);
+    if (monthLogs.length < 3) return;
+    setReportLoading(true);
+    try {
+      const data = monthLogs.map((l) => ({
+        日付: l.date, 睡眠満足度: SLEEP_LABELS[l.sleep], 疲労感: FATIGUE_LABELS[l.fatigue],
+        イベント: (l.events || []).join("・"), 崩れ: l.kuzure ? "あり" : "なし",
+        崩れ行動: (l.actions || []).join("・"), 気持ち: (l.motives || []).join("・"),
+        試したこと: (l.recovery || []).join("・"), メモ: l.memo || "",
+      }));
+      const res = await callAnalyze({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: `以下は私の${m + 1}月の崩れログのデータです。1ヶ月分のふりかえりレポートを、落ち着いた分析口調で書いてください。
+
+ルール：
+- 具体的な日付やイベントを根拠に述べること
+- 良かった点と、気をつけたい点の両方に触れること
+- 記号（アスタリスク*、シャープ#、中黒・、番号）は一切使わない
+- 最後に来月へ向けた前向きで具体的な一言を添える
+
+出力フォーマット（このラベルは必ず使う）：
+SUMMARY: 今月を総括する1文
+DETAIL:
+気づきを2〜3個、各行「見出し｜本文」の形式で（見出しは12文字以内）。区切りは全角の縦棒「｜」。行間は空けない
+NEXT: 来月に向けたヒントを1〜2文で
+
+データ：
+${JSON.stringify(data, null, 2)}`
+        }]
+      });
+      if (res.status === 401) { setReports((p) => ({ ...p, [mk]: "__LOGIN__" })); setReportLoading(false); return; }
+      const j = await res.json();
+      const text = (j.content || []).map((c) => c.text || "").join("");
+      if (text) { try { localStorage.setItem("kuzure_used_ai", "1"); } catch {} }
+      setReports((p) => ({ ...p, [mk]: text || "__FAIL__" }));
+    } catch {
+      setReports((p) => ({ ...p, [reportMonth.getFullYear() + "/" + (reportMonth.getMonth() + 1)]: "__FAIL__" }));
+    }
+    setReportLoading(false);
   };
 
   // ── history helpers ──────────────────────────────────────
@@ -1439,6 +1503,71 @@ MRTQ: 精神×緊張緩和×群×静
                         <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>記録</p>
                       </div>
                     </div>
+                  </div>
+                );
+              })()}
+
+              {/* AI月次レポート */}
+              {(() => {
+                const y = reportMonth.getFullYear(), m = reportMonth.getMonth();
+                const mk = `${y}/${m + 1}`;
+                const monthLogs = logs.filter((l) => monthKeyOf(l.date) === mk);
+                const now = new Date();
+                const atCurrent = y === now.getFullYear() && m === now.getMonth();
+                const report = reports[mk];
+                const navBtn = (dir) => () => { setReportMonth(new Date(y, m + dir, 1)); };
+                return (
+                  <div style={{ background: "linear-gradient(135deg,#f3effb,#efe9fb)", border: "1.5px solid #d6ccf5", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#5a35c8", letterSpacing: "0.04em" }}>📖 月次レポート</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button onClick={navBtn(-1)} style={{ fontSize: 13, width: 24, height: 24, border: "1px solid #d6ccf5", borderRadius: 8, background: "#fff", color: "#7a5fd0", cursor: "pointer" }}>‹</button>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#5a35c8", minWidth: 38, textAlign: "center" }}>{y}/{m + 1}</span>
+                        <button onClick={navBtn(1)} disabled={atCurrent} style={{ fontSize: 13, width: 24, height: 24, border: "1px solid #d6ccf5", borderRadius: 8, background: "#fff", color: atCurrent ? "#ccc" : "#7a5fd0", cursor: atCurrent ? "default" : "pointer" }}>›</button>
+                      </div>
+                    </div>
+                    {report && report !== "__LOGIN__" && report !== "__FAIL__" ? (() => {
+                      const { summary, points, next } = parseReport(report);
+                      return (
+                        <>
+                          <div style={{ background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 9 : 0 }}>
+                            <p style={{ fontSize: 14.5, color: "#3a2a7a", lineHeight: 1.75, margin: 0, fontWeight: 700 }}>{summary}</p>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                            {points.map((p, i) => (
+                              <div key={i} style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1px solid #ece6f8", borderLeft: "3px solid #5a35c8" }}>
+                                {p.title && <p style={{ fontSize: 13.5, fontWeight: 800, color: "#5a35c8", margin: "0 0 5px" }}>{p.title}</p>}
+                                <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.8, margin: 0 }}>{p.body}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {next && (
+                            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#eaf6ea", border: "1.5px solid #bfe3bf", borderRadius: 12, padding: "11px 13px", marginTop: 9 }}>
+                              <span style={{ fontSize: 16 }}>🌱</span>
+                              <div>
+                                <p style={{ fontSize: 11, fontWeight: 700, color: "#3a8a4a", margin: "0 0 3px" }}>来月へのヒント</p>
+                                <p style={{ fontSize: 13, color: "#3a6a3a", lineHeight: 1.7, margin: 0 }}>{next}</p>
+                              </div>
+                            </div>
+                          )}
+                          <button onClick={runMonthlyReport} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0, marginTop: 10 }}>もう一度作る</button>
+                        </>
+                      );
+                    })() : reportLoading ? (
+                      <p style={{ fontSize: 13, color: "#9a80d0", textAlign: "center", margin: "6px 0" }}>作成中...</p>
+                    ) : !user ? (
+                      <div style={{ textAlign: "center" }}>
+                        <p style={{ fontSize: 13, color: "#7a5fd0", margin: "0 0 10px", lineHeight: 1.6 }}>🔒 月の終わりに、AIがその月をふりかえってくれます。<b>ログイン</b>で使えます</p>
+                        <button onClick={() => setShowAuthModal(true)} style={{ width: "100%", padding: "11px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>ログイン / 新規登録</button>
+                      </div>
+                    ) : monthLogs.length < 3 ? (
+                      <p style={{ fontSize: 13, color: "#9a8fc0", textAlign: "center", margin: "6px 0" }}>{y}/{m + 1}の記録が3日分たまるとレポートが作れます（今{monthLogs.length}日）</p>
+                    ) : (
+                      <>
+                        <button onClick={runMonthlyReport} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>{m + 1}月のレポートを作る（{monthLogs.length}日分）</button>
+                        {report === "__FAIL__" && <p style={{ fontSize: 12, color: "#c02020", textAlign: "center", margin: "8px 0 0" }}>作成に失敗しました。もう一度お試しください。</p>}
+                      </>
+                    )}
                   </div>
                 );
               })()}
