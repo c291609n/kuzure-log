@@ -1507,6 +1507,33 @@ ${JSON.stringify(data, null, 2)}`
                 );
               })()}
 
+              {/* ストリーク */}
+              {(() => {
+                const streak = computeStreak();
+                if (streak < 2) return null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#fff3e0,#ffe2c4)", border: "1.5px solid #f5c98a", borderRadius: 14, padding: "12px 16px", marginBottom: 12 }}>
+                    <span style={{ fontSize: 26 }}>🔥</span>
+                    <div>
+                      <p style={{ fontSize: 16, fontWeight: 800, color: "#c05a00", margin: 0 }}>{streak}日連続で記録中！</p>
+                      <p style={{ fontSize: 11, color: "#c08a50", margin: "2px 0 0" }}>この調子で続けよう</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* AI機能（ログイン特典）: 未ログインは1行に畳む */}
+              {!user ? (
+                <div style={{ background: "linear-gradient(135deg,#f3effb,#efe9fb)", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>🔒</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#5a35c8", margin: "0 0 2px" }}>AI機能はログインで解放</p>
+                    <p style={{ fontSize: 11, color: "#9a8fc0", margin: 0 }}>月次レポート・パターン分析・回復タイプ診断　<span onClick={() => setShowAllTypes(true)} style={{ textDecoration: "underline", cursor: "pointer" }}>全タイプを見る</span></p>
+                  </div>
+                  <button onClick={() => setShowAuthModal(true)} style={{ fontSize: 12, fontWeight: 700, padding: "8px 14px", border: "none", borderRadius: 10, background: "#5a35c8", color: "#fff", cursor: "pointer", flexShrink: 0 }}>ログイン</button>
+                </div>
+              ) : (<>
+
               {/* AI月次レポート */}
               {(() => {
                 const y = reportMonth.getFullYear(), m = reportMonth.getMonth();
@@ -1568,21 +1595,6 @@ ${JSON.stringify(data, null, 2)}`
                         {report === "__FAIL__" && <p style={{ fontSize: 12, color: "#c02020", textAlign: "center", margin: "8px 0 0" }}>作成に失敗しました。もう一度お試しください。</p>}
                       </>
                     )}
-                  </div>
-                );
-              })()}
-
-              {/* ストリーク */}
-              {(() => {
-                const streak = computeStreak();
-                if (streak < 2) return null;
-                return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#fff3e0,#ffe2c4)", border: "1.5px solid #f5c98a", borderRadius: 14, padding: "12px 16px", marginBottom: 12 }}>
-                    <span style={{ fontSize: 26 }}>🔥</span>
-                    <div>
-                      <p style={{ fontSize: 16, fontWeight: 800, color: "#c05a00", margin: 0 }}>{streak}日連続で記録中！</p>
-                      <p style={{ fontSize: 11, color: "#c08a50", margin: "2px 0 0" }}>この調子で続けよう</p>
-                    </div>
                   </div>
                 );
               })()}
@@ -1698,6 +1710,8 @@ ${JSON.stringify(data, null, 2)}`
                   )}
                 </div>
               )}
+              </>)}
+
               {renderHeatmap()}
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "22px 0 8px" }}>
