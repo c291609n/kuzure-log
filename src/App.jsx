@@ -390,10 +390,12 @@ export default function App() {
         recovery, is_period: trackPeriod ? isPeriod : null, event_memo: eventMemo,
       };
       const existingLog = logs.find(l => l.date === dateToSave);
-      if (existingLog?.id) {
-        await supabase.from("logs").update(dbEntry).eq("id", existingLog.id);
-      } else {
-        await supabase.from("logs").insert(dbEntry);
+      const { error } = existingLog?.id
+        ? await supabase.from("logs").update(dbEntry).eq("id", existingLog.id)
+        : await supabase.from("logs").insert(dbEntry);
+      if (error) {
+        alert("記録に失敗しました。通信環境を確認して、もう一度試してください。");
+        return; // keep the form filled so nothing is lost
       }
       // Reload logs from Supabase only
       await loadUserData(user.id);
