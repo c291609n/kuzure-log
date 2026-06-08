@@ -246,6 +246,8 @@ export default function App() {
   const [resetSent, setResetSent] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
+  const [browserOnly, setBrowserOnly] = useState(false);
 
   useEffect(() => {
     // Check auth state
@@ -260,6 +262,11 @@ export default function App() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Prompt login on load when not logged in (unless user chose browser-only this session)
+  useEffect(() => {
+    if (!authLoading && !user && !browserOnly) setShowAuthModal(true);
+  }, [authLoading, user, browserOnly]);
 
   const loadUserData = async (userId) => {
     try {
@@ -700,12 +707,21 @@ MRTQ: 精神×緊張緩和×群×静
 
   // Import existing localStorage data to Supabase
   const handleImport = async () => {
+    if (!user) { alert("先にログインしてください"); return; }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) { alert("インポートするデータがありません"); return; }
       const localLogs = JSON.parse(raw);
       if (!localLogs.length) { alert("インポートするデータがありません"); return; }
-      
+
+      // Fetch existing logs to decide insert vs update (avoids relying on a unique constraint)
+      const { data: existing } = await supabase
+        .from("logs").select("id,date").eq("user_id", user.id);
+      const byDate = {};
+      (existing || []).forEach((e) => { byDate[e.date] = e.id; });
+
+      let ok = 0;
+      const errors = [];
       for (const l of localLogs) {
         const dbEntry = {
           user_id: user.id, date: l.date, sleep: l.sleep, fatigue: l.fatigue,
@@ -713,13 +729,21 @@ MRTQ: 精神×緊張緩和×群×静
           motives: l.motives || [], memo: l.memo || "", recovery: l.recovery || [],
           is_period: l.isPeriod || null, event_memo: l.eventMemo || "",
         };
-        await supabase.from("logs").upsert(dbEntry, { onConflict: "user_id,date" });
+        const existingId = byDate[l.date];
+        const { error } = existingId
+          ? await supabase.from("logs").update(dbEntry).eq("id", existingId)
+          : await supabase.from("logs").insert(dbEntry);
+        if (error) errors.push(error.message); else ok++;
       }
       await loadUserData(user.id);
       setShowImport(false);
-      alert(`${localLogs.length}件のデータを引き継ぎました！`);
+      if (errors.length) {
+        alert(`${ok}件引き継ぎ、${errors.length}件失敗しました。\n${errors[0]}`);
+      } else {
+        alert(`${ok}件のデータを引き継ぎました！`);
+      }
     } catch (e) {
-      alert("引き継ぎに失敗しました");
+      alert("引き継ぎに失敗しました: " + (e?.message || ""));
     }
   };
 
@@ -736,11 +760,19 @@ MRTQ: 精神×緊張緩和×群×静
   const handleAuth = async () => {
     setAuthError("");
     if (authMode === "signup") {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) setAuthError(error.message);
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) { setAuthError(error.message); return; }
+      if (data.session) {
+        // Logged in immediately (email confirmation off)
+        setShowAuthModal(false);
+      } else {
+        // Email confirmation required — make this clearly visible
+        setSignupDone(true);
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setAuthError("メールアドレスかパスワードが違います");
+      else setShowAuthModal(false);
     }
   };
 
@@ -1073,7 +1105,14 @@ MRTQ: 精神×緊張緩和×群×静
             <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "14px 16px" }}>
               <p style={{ fontSize: 13, color: "#1a1a1a", fontWeight: 600, margin: "0 0 4px" }}>ログイン前のデータを引き継ぐ</p>
               <p style={{ fontSize: 12, color: "#b0a898", margin: "0 0 12px" }}>このブラウザに保存されているデータをアカウントに移行します</p>
-              <button onClick={() => setShowImport(true)} style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#1a7ac0", color: "#fff", cursor: "pointer" }}>データを引き継ぐ</button>
+              {user ? (
+                <button onClick={() => setShowImport(true)} style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#1a7ac0", color: "#fff", cursor: "pointer" }}>データを引き継ぐ</button>
+              ) : (
+                <>
+                  <button disabled style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: "#ccc", color: "#fff", cursor: "not-allowed" }}>データを引き継ぐ</button>
+                  <p style={{ fontSize: 12, color: "#c08", margin: "8px 0 0" }}>引き継ぎには<button onClick={() => setShowAuthModal(true)} style={{ color: "#1a7ac0", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", fontSize: 12 }}>ログイン</button>が必要です</p>
+                </>
+              )}
             </div>
           </div>
           <div style={S.secWrap}>
@@ -1230,23 +1269,37 @@ MRTQ: 精神×緊張緩和×群×静
       {showAuthModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24 }}>
           <div style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 320, width: "100%" }}>
-            <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 12, padding: 3, marginBottom: 16 }}>
-              <button onClick={() => setAuthMode("login")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "login" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "login" ? "#fff" : "transparent", color: authMode === "login" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>ログイン</button>
-              <button onClick={() => setAuthMode("signup")} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "signup" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "signup" ? "#fff" : "transparent", color: authMode === "signup" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>新規登録</button>
-            </div>
-            <input type="email" placeholder="メールアドレス" value={email} onChange={(e) => setEmail(e.target.value)}
-              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
-            <input type="password" placeholder="パスワード（6文字以上）" value={password} onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
-              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
-            {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
-            <button onClick={async () => { await handleAuth(); if (!authError) setShowAuthModal(false); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>
-              {authMode === "login" ? "ログイン" : "アカウントを作成"}
-            </button>
-            {authMode === "login" && (
-              <button onClick={() => { setShowAuthModal(false); setResetMode(true); }} style={{ width: "100%", fontSize: 12, color: "#aaa", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", marginBottom: 8 }}>パスワードを忘れた</button>
+            {signupDone ? (
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 40, margin: "0 0 8px" }}>📩</p>
+                <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "0 0 8px" }}>確認メールを送りました</p>
+                <p style={{ fontSize: 13, color: "#888", margin: "0 0 20px", lineHeight: 1.6 }}>{email} 宛のメールに届いたリンクを開くと、アカウントが有効になります。リンクを開いたあと、もう一度ログインしてください。</p>
+                <button onClick={() => { setSignupDone(false); setAuthMode("login"); setPassword(""); }} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>ログイン画面へ</button>
+                <button onClick={() => { setSignupDone(false); setShowAuthModal(false); setBrowserOnly(true); }} style={{ width: "100%", padding: "10px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>閉じる</button>
+              </div>
+            ) : (
+              <>
+                <p style={{ fontSize: 13, color: "#888", textAlign: "center", margin: "0 0 16px", lineHeight: 1.6 }}>ログインすると、機種変更やキャッシュ削除でもデータが消えません。</p>
+                <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 12, padding: 3, marginBottom: 16 }}>
+                  <button onClick={() => { setAuthMode("login"); setAuthError(""); }} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "login" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "login" ? "#fff" : "transparent", color: authMode === "login" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>ログイン</button>
+                  <button onClick={() => { setAuthMode("signup"); setAuthError(""); }} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: authMode === "signup" ? 700 : 400, border: "none", borderRadius: 9, background: authMode === "signup" ? "#fff" : "transparent", color: authMode === "signup" ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>新規登録</button>
+                </div>
+                <input type="email" placeholder="メールアドレス" value={email} onChange={(e) => setEmail(e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+                <input type="password" placeholder="パスワード（6文字以上）" value={password} onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+                {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
+                <button onClick={handleAuth} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>
+                  {authMode === "login" ? "ログイン" : "アカウントを作成"}
+                </button>
+                {authMode === "login" && (
+                  <button onClick={() => { setShowAuthModal(false); setResetMode(true); }} style={{ width: "100%", fontSize: 12, color: "#aaa", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", marginBottom: 8 }}>パスワードを忘れた</button>
+                )}
+                <button onClick={() => { setShowAuthModal(false); setBrowserOnly(true); }} style={{ width: "100%", padding: "10px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>ログインせずにブラウザで使う</button>
+                <p style={{ fontSize: 11, color: "#c0b8a8", textAlign: "center", margin: "8px 0 0", lineHeight: 1.5 }}>※ログインなしだと、キャッシュ削除でデータが消えることがあります</p>
+              </>
             )}
-            <button onClick={() => setShowAuthModal(false)} style={{ width: "100%", padding: "10px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>キャンセル</button>
           </div>
         </div>
       )}
