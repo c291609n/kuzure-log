@@ -806,7 +806,7 @@ MRTQ: 精神×緊張緩和×群×静
 
           {/* 睡眠 */}
           <div style={S.secWrap}>
-            <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>昨夜の睡眠満足度<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
+            <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>昨夜（{prevDay(selectedDate || todayStr())}の夜）の睡眠満足度<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
             <div style={S.faceGrid}>
               {[1,2,3,4,5].map((v) => (
                 <button key={v} onClick={() => setSleep(v)} style={S.faceBtn(sleep===v, "#5a35c8")}>
