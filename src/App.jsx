@@ -535,6 +535,8 @@ export default function App() {
   const [showAllLogs, setShowAllLogs] = useState(false);
   const [openLogKey, setOpenLogKey] = useState(null);
   const [closedMonths, setClosedMonths] = useState({});
+  const [logsView, setLogsView] = useState("list");
+  const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
 
   // AI analysis is a login-only feature — attach the user's token so the API can verify it.
   const callAnalyze = async (payload) => {
@@ -822,6 +824,102 @@ MRTQ: 精神×緊張緩和×群×静
       groups[idx[mk]].items.push(l);
     });
     return groups;
+  };
+
+  const logByDay = () => { const m = {}; logs.forEach((l) => { m[dayKey(l.date)] = l; }); return m; };
+
+  // GitHub-style heatmap of the recent weeks: red = 崩れ, green = なし, grey = no record.
+  const renderHeatmap = () => {
+    const byKey = logByDay();
+    const WEEKS = 18;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const start = new Date(today);
+    start.setDate(start.getDate() - (WEEKS * 7 - 1));
+    start.setDate(start.getDate() - start.getDay()); // back to Sunday
+    const days = [];
+    const d = new Date(start);
+    while (d <= today) { days.push(new Date(d)); d.setDate(d.getDate() + 1); }
+    while (days.length % 7 !== 0) days.push(null);
+    const weeks = [];
+    for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+    const color = (dt) => {
+      if (!dt) return "transparent";
+      const log = byKey[keyOfDate(dt)];
+      if (!log) return "#ece8e0";
+      return log.kuzure ? "#e0503a" : "#7bc47f";
+    };
+    return (
+      <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 12 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 12px" }}>崩れヒートマップ（直近{WEEKS}週）</p>
+        <div style={{ display: "flex", gap: 3, justifyContent: "center" }}>
+          {weeks.map((w, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {w.map((dt, j) => (
+                <div key={j} title={dt ? keyOfDate(dt) : ""} style={{ width: 11, height: 11, borderRadius: 2, background: color(dt) }} />
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 12 }}>
+          {[["#e0503a", "崩れ"], ["#7bc47f", "崩れなし"], ["#ece8e0", "記録なし"]].map(([c, t]) => (
+            <div key={t} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
+              <span style={{ fontSize: 10, color: "#999" }}>{t}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Month calendar: tap a recorded day to view/edit it below the grid.
+  const renderCalendar = () => {
+    const byKey = logByDay();
+    const y = calMonth.getFullYear(), m = calMonth.getMonth();
+    const startPad = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < startPad; i++) cells.push(null);
+    for (let dd = 1; dd <= daysInMonth; dd++) cells.push(dd);
+    const now = new Date();
+    const atCurrent = y === now.getFullYear() && m === now.getMonth();
+    const sel = logs.find((l) => (l.id || l.date) === openLogKey);
+    const WD = ["日", "月", "火", "水", "木", "金", "土"];
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0 10px" }}>
+          <button onClick={() => setCalMonth(new Date(y, m - 1, 1))} style={{ fontSize: 18, width: 32, height: 32, border: "1.5px solid #e4e0d8", borderRadius: 10, background: "#fff", color: "#888", cursor: "pointer" }}>‹</button>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a" }}>{y}年{m + 1}月</span>
+          <button onClick={() => !atCurrent && setCalMonth(new Date(y, m + 1, 1))} disabled={atCurrent} style={{ fontSize: 18, width: 32, height: 32, border: "1.5px solid #e4e0d8", borderRadius: 10, background: "#fff", color: atCurrent ? "#ddd" : "#888", cursor: atCurrent ? "default" : "pointer" }}>›</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 4 }}>
+          {WD.map((w, i) => (
+            <div key={w} style={{ textAlign: "center", fontSize: 10, color: i === 0 ? "#d0604a" : i === 6 ? "#5a7ac0" : "#aaa" }}>{w}</div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+          {cells.map((dd, i) => {
+            if (!dd) return <div key={i} />;
+            const log = byKey[`${y}/${m + 1}/${dd}`];
+            const bg = log ? (log.kuzure ? "#fdecea" : "#eaf6ea") : "#faf9f7";
+            const dot = log ? (log.kuzure ? "#e0503a" : "#7bc47f") : null;
+            const selected = log && (log.id || log.date) === openLogKey;
+            return (
+              <div key={i} onClick={() => log && setOpenLogKey(selected ? null : (log.id || log.date))}
+                style={{ aspectRatio: "1", borderRadius: 9, background: bg, border: selected ? "1.5px solid #5a35c8" : "1.5px solid transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: log ? "pointer" : "default", gap: 3 }}>
+                <span style={{ fontSize: 12, color: log ? "#444" : "#ccc", fontWeight: log ? 600 : 400 }}>{dd}</span>
+                {dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot }} />}
+              </div>
+            );
+          })}
+        </div>
+        {sel && (
+          <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "2px 14px", marginTop: 12 }}>
+            <LogRow e={sel} />
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Compact one-line log row that expands to full detail on tap.
@@ -1471,33 +1569,21 @@ MRTQ: 精神×緊張緩和×群×静
                   )}
                 </div>
               )}
-              {/* 実績バッジ */}
-              {(() => {
-                const stats = computeBadgeStats();
-                const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
-                return (
-                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
-                      <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-                      {BADGES.map((b) => {
-                        const got = b.earned(stats);
-                        return (
-                          <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
-                            <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
-                            <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
+              {renderHeatmap()}
 
-              <div style={{ ...S.secHead, margin: "22px 0 2px" }}><div style={S.secBar("#1a1a1a")}/><span style={S.secLabel}>{showAllLogs ? "すべてのログ" : "最近のログ"}</span></div>
-              {!showAllLogs ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "22px 0 8px" }}>
+                <div style={{ ...S.secHead, marginBottom: 0 }}><div style={S.secBar("#1a1a1a")}/><span style={S.secLabel}>{logsView === "calendar" ? "カレンダー" : showAllLogs ? "すべてのログ" : "最近のログ"}</span></div>
+                <div style={{ display: "flex", background: "#e8e4dc", borderRadius: 10, padding: 2 }}>
+                  {[["list", "リスト"], ["calendar", "カレンダー"]].map(([v, label]) => (
+                    <button key={v} onClick={() => { setLogsView(v); setOpenLogKey(null); }} style={{ padding: "5px 12px", fontSize: 12, fontWeight: logsView === v ? 700 : 400, border: "none", borderRadius: 8, background: logsView === v ? "#fff" : "transparent", color: logsView === v ? "#1a1a1a" : "#9a9080", cursor: "pointer" }}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              {logsView === "calendar" ? (
+                <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px" }}>
+                  {renderCalendar()}
+                </div>
+              ) : !showAllLogs ? (
                 <>
                   <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "2px 14px" }}>
                     {logs.slice(0, 5).map((e) => <LogRow key={e.id || e.date} e={e} />)}
@@ -1527,6 +1613,31 @@ MRTQ: 精神×緊張緩和×群×静
                   <button onClick={() => { setShowAllLogs(false); setOpenLogKey(null); }} style={{ width: "100%", padding: "12px", marginTop: 4, fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>折りたたむ ▲</button>
                 </>
               )}
+
+              {/* 実績バッジ */}
+              {(() => {
+                const stats = computeBadgeStats();
+                const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
+                return (
+                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
+                      <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+                      {BADGES.map((b) => {
+                        const got = b.earned(stats);
+                        return (
+                          <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
+                            <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
+                            <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
