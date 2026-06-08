@@ -324,6 +324,11 @@ export default function App() {
   }, [motiveItems]);
 
   const todayStr = () => { const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
+  const prevDay = (dateStr) => {
+    const d = new Date(dateStr.replace(/\//g, "-"));
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+  };
   const saveLogs = async (nl) => {
     setLogs(nl);
     // Also save to localStorage as backup
