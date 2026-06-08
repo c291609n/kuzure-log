@@ -545,7 +545,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 1000,
           messages: [{
             role: "user",
@@ -566,7 +566,7 @@ ${JSON.stringify(summary, null, 2)}`
       });
       const data = await res.json();
       const text = (data.content||[]).map((c) => c.text||"").join("");
-      setAiAnalysis(text);
+      setAiAnalysis(text || "分析に失敗しました。もう一度試してください。");
     } catch (e) {
       setAiAnalysis("分析に失敗しました。もう一度試してください。");
     }
@@ -633,7 +633,7 @@ ${JSON.stringify(summary, null, 2)}`
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 100,
           temperature: 0,
           messages: [{
