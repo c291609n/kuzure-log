@@ -729,26 +729,27 @@ MRTQ: 精神×緊張緩和×群×静
       (existing || []).forEach((e) => { byDate[e.date] = e.id; });
 
       let ok = 0;
+      let skipped = 0;
       const errors = [];
       for (const l of localLogs) {
+        // Same date already in the cloud → keep the cloud version, skip (never overwrite newer data)
+        if (byDate[l.date]) { skipped++; continue; }
         const dbEntry = {
           user_id: user.id, date: l.date, sleep: l.sleep, fatigue: l.fatigue,
           events: l.events || [], kuzure: l.kuzure, actions: l.actions || [],
           motives: l.motives || [], memo: l.memo || "", recovery: l.recovery || [],
           is_period: l.isPeriod || null, event_memo: l.eventMemo || "",
         };
-        const existingId = byDate[l.date];
-        const { error } = existingId
-          ? await supabase.from("logs").update(dbEntry).eq("id", existingId)
-          : await supabase.from("logs").insert(dbEntry);
+        const { error } = await supabase.from("logs").insert(dbEntry);
         if (error) errors.push(error.message); else ok++;
       }
       await loadUserData(user.id);
       setShowImport(false);
+      const skipMsg = skipped ? `（同じ日付の${skipped}件は既にあるのでそのまま残しました）` : "";
       if (errors.length) {
-        alert(`${ok}件引き継ぎ、${errors.length}件失敗しました。\n${errors[0]}`);
+        alert(`${ok}件引き継ぎ、${errors.length}件失敗しました。${skipMsg}\n${errors[0]}`);
       } else {
-        alert(`${ok}件のデータを引き継ぎました！`);
+        alert(`${ok}件のデータを引き継ぎました！${skipMsg}`);
       }
     } catch (e) {
       alert("引き継ぎに失敗しました: " + (e?.message || ""));
