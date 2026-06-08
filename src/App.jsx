@@ -572,18 +572,19 @@ export default function App() {
           max_tokens: 1000,
           messages: [{
             role: "user",
-            content: `以下は私の日々の崩れログです。
+            content: `以下は私の日々の崩れログです。仲のいい友達みたいな、やさしくて自然な話し言葉で、私のことを気にかけてくれる感じで書いてください。
 
-重要：
-- 日付やイベントを使って具体的に書いてください
-- 崩れた日と崩れなかった日の違いに注目してください
-- 疲労感は「元気→やや元気→ふつう→やや疲れ→限界」の順で悪化します
-- 睡眠満足度は「最悪→悪い→まあまあ→良い→ぐっすり」の順で良くなります
-- まず一番重要な気づきを1文で書いてください（SUMMARY:から始めて）
-- その後、詳細な気づきを3つ箇条書きで書いてください（DETAIL:から始めて）
+書き方のルール：
+- 「〜な傾向があります」みたいな堅い分析口調はやめて、「〜かもね」「〜してるみたいだよ」みたいに、隣で話しかけてくれる感じで
+- 具体的な日付やイベントを織り交ぜて、私だけに向けた言葉にしてください
+- 崩れた日と崩れなかった日の違いに注目
+- 疲労感は「元気→やや元気→ふつう→やや疲れ→限界」の順で悪化、睡眠満足度は「最悪→悪い→まあまあ→良い→ぐっすり」の順で良くなる
+- 記号（アスタリスク*、シャープ#、中黒・、番号）は一切使わないこと。装飾なしの普通の文章で
 
-データ：
-${JSON.stringify(summary, null, 2)}`
+出力フォーマット（このラベルは必ず使う）：
+SUMMARY: 一番伝えたい気づきを、あたたかい一言で（1文）
+DETAIL:
+気づきを2〜3個、1個につき1行で。各行は自然な文章で、行間は空けない`
           }]
         });
       if (res.status === 401) { setAiAnalysis("AI分析はログインすると使えます。"); setAiLoading(false); return; }
@@ -703,19 +704,22 @@ MRTQ: 精神×緊張緩和×群×静
     setTypeLoading(false);
   };
 
-  const renderMarkdown = (text) => {
-    return text.split("\n").map((line, i) => {
-      const parts = line.split(/(\*\*[^*]+\*\*)/g);
-      return (
-        <p key={i} style={{ margin: "4px 0", fontSize: 13, color: "#4a3a9a", lineHeight: 1.7 }}>
-          {parts.map((part, j) =>
-            part.startsWith("**") && part.endsWith("**")
-              ? <strong key={j}>{part.slice(2, -2)}</strong>
-              : part
-          )}
-        </p>
-      );
-    });
+  // Strip markdown artifacts (asterisks, bullets, leading numbers) the model may emit.
+  const cleanLine = (t) => (t || "")
+    .replace(/\*\*/g, "")
+    .replace(/^\s*([-*•・►▶◦]|\d+[.)、）])\s*/, "")
+    .replace(/[*#`>]/g, "")
+    .replace(/^(SUMMARY|DETAIL)[:：]?\s*/i, "")
+    .trim();
+
+  // Split the AI response into a one-line summary + a few clean detail points.
+  const parseAnalysis = (raw) => {
+    const sm = raw.match(/SUMMARY[:：]?\s*([\s\S]*?)(?=DETAIL|$)/i);
+    const dm = raw.match(/DETAIL[:：]?\s*([\s\S]*)/i);
+    const summary = cleanLine((sm ? sm[1] : (raw.split("\n")[0] || "")).trim());
+    const detailRaw = (dm ? dm[1] : "").trim();
+    const points = detailRaw.split("\n").map(cleanLine).filter((l) => l.length > 1);
+    return { summary, points };
   };
 
   // ── history helpers ──────────────────────────────────────
@@ -1293,21 +1297,28 @@ MRTQ: 精神×緊張緩和×群×静
                 {aiAnalysis && (
                   <>
                     {(() => {
-                      const summaryMatch = aiAnalysis.match(/SUMMARY:(.*?)(?=DETAIL:|$)/s);
-                      const detailMatch = aiAnalysis.match(/DETAIL:(.*)/s);
-                      const summary = summaryMatch ? summaryMatch[1].trim() : aiAnalysis.split("\n")[0];
-                      const detail = detailMatch ? detailMatch[1].trim() : "";
+                      const { summary, points } = parseAnalysis(aiAnalysis);
                       return (
                         <>
-                          <p style={{ fontSize: 13, color: "#4a3a9a", lineHeight: 1.7, margin: "0 0 10px", fontWeight: 600 }}>{summary}</p>
-                          {detail && !showFullAnalysis && (
+                          <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 10 : 0 }}>
+                            <span style={{ fontSize: 18, lineHeight: 1.5, flexShrink: 0 }}>💡</span>
+                            <p style={{ fontSize: 14.5, color: "#3a2a7a", lineHeight: 1.75, margin: 0, fontWeight: 700 }}>{summary}</p>
+                          </div>
+                          {points.length > 0 && !showFullAnalysis && (
                             <button onClick={() => setShowFullAnalysis(true)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-                              もっと読む ▼
+                              くわしく見る ▼
                             </button>
                           )}
-                          {detail && showFullAnalysis && (
+                          {points.length > 0 && showFullAnalysis && (
                             <>
-                              <div style={{ margin: "8px 0 10px" }}>{renderMarkdown(detail)}</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "4px 0 10px" }}>
+                                {points.map((p, i) => (
+                                  <div key={i} style={{ display: "flex", gap: 10, background: "#fff", borderRadius: 12, padding: "11px 13px", border: "1px solid #ece6f8" }}>
+                                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: "50%", background: "#5a35c8", color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span>
+                                    <p style={{ fontSize: 13, color: "#4a3a6a", lineHeight: 1.75, margin: 0 }}>{p}</p>
+                                  </div>
+                                ))}
+                              </div>
                               <button onClick={() => setShowFullAnalysis(false)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
                                 閉じる ▲
                               </button>
@@ -1316,7 +1327,7 @@ MRTQ: 精神×緊張緩和×群×静
                         </>
                       );
                     })()}
-                    <div style={{ marginTop: 10 }}>
+                    <div style={{ marginTop: 12 }}>
                       <button onClick={() => { runAiAnalysis(); setShowFullAnalysis(false); }} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
                         もう一度分析する
                       </button>
