@@ -595,6 +595,7 @@ ${JSON.stringify(summary, null, 2)}`
       if (res.status === 401) { setAiAnalysis("AI分析はログインすると使えます。"); setAiLoading(false); return; }
       const data = await res.json();
       const text = (data.content||[]).map((c) => c.text||"").join("");
+      if (text) { try { localStorage.setItem("kuzure_used_ai", "1"); } catch {} }
       setAiAnalysis(text || "分析に失敗しました。もう一度試してください。");
     } catch (e) {
       setAiAnalysis("分析に失敗しました。もう一度試してください。");
@@ -749,6 +750,67 @@ MRTQ: 精神×緊張緩和×群×静
     const avg = (arr) => (arr.length ? arr.reduce((s, l) => s + (l.fatigue || 0), 0) / arr.length : 0);
     return { month: now.getMonth() + 1, days: cur.length, kuzure: kuzureCount(cur), prevKuzure: kuzureCount(pre), hasPrev: pre.length > 0, avgFatigue: avg(cur) };
   };
+
+  // Normalize a stored date ("2026/06/08" or "2026/6/8") to a numeric key "2026/6/8".
+  const dayKey = (d) => d.split("/").map(Number).join("/");
+  const keyOfDate = (dt) => `${dt.getFullYear()}/${dt.getMonth() + 1}/${dt.getDate()}`;
+
+  // Current run of consecutive recorded days, ending today or yesterday.
+  const computeStreak = () => {
+    const set = new Set(logs.map((l) => dayKey(l.date)));
+    const cursor = new Date(); cursor.setHours(0, 0, 0, 0);
+    if (!set.has(keyOfDate(cursor))) {
+      cursor.setDate(cursor.getDate() - 1);
+      if (!set.has(keyOfDate(cursor))) return 0;
+    }
+    let streak = 0;
+    while (set.has(keyOfDate(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+    return streak;
+  };
+
+  // Stats used to decide which badges are unlocked.
+  const computeBadgeStats = () => {
+    const byKey = {};
+    logs.forEach((l) => { byKey[dayKey(l.date)] = l; });
+    const toDate = (k) => { const [y, m, d] = k.split("/").map(Number); return new Date(y, m - 1, d); };
+    const sortedKeys = Object.keys(byKey).sort((a, b) => toDate(a) - toDate(b));
+    const DAY = 86400000;
+
+    let maxStreak = 0, run = 0, maxCleanRun = 0, cleanRun = 0, prev = null;
+    sortedKeys.forEach((k) => {
+      const dt = toDate(k);
+      run = prev && (dt - prev) === DAY ? run + 1 : 1;
+      maxStreak = Math.max(maxStreak, run);
+      const clean = !byKey[k].kuzure;
+      cleanRun = run === 1 ? (clean ? 1 : 0) : (clean ? cleanRun + 1 : 0);
+      maxCleanRun = Math.max(maxCleanRun, cleanRun);
+      prev = dt;
+    });
+
+    let recovered = false;
+    for (let i = 0; i < sortedKeys.length - 1; i++) {
+      const a = toDate(sortedKeys[i]), b = toDate(sortedKeys[i + 1]);
+      if ((b - a) === DAY && byKey[sortedKeys[i]].kuzure && (byKey[sortedKeys[i + 1]].recovery || []).length > 0) { recovered = true; break; }
+    }
+
+    const memoCount = logs.filter((l) => (l.memo && l.memo.trim()) || (l.eventMemo && l.eventMemo.trim())).length;
+    let usedAi = false; try { usedAi = localStorage.getItem("kuzure_used_ai") === "1"; } catch {}
+    return { total: logs.length, maxStreak, maxCleanRun, recovered, memoCount, usedAi };
+  };
+
+  const BADGES = [
+    { emoji: "🌱", title: "はじめの一歩", desc: "はじめて記録した", earned: (s) => s.total >= 1 },
+    { emoji: "🔥", title: "3日連続", desc: "3日続けて記録した", earned: (s) => s.maxStreak >= 3 },
+    { emoji: "📅", title: "記録7日", desc: "通算7日記録した", earned: (s) => s.total >= 7 },
+    { emoji: "🔥", title: "7日連続", desc: "7日続けて記録した", earned: (s) => s.maxStreak >= 7 },
+    { emoji: "🛡️", title: "崩れゼロ週間", desc: "7日連続で崩れなし", earned: (s) => s.maxCleanRun >= 7 },
+    { emoji: "🔁", title: "立て直し上手", desc: "崩れた翌日に回復行動を記録した", earned: (s) => s.recovered },
+    { emoji: "📝", title: "記録魔", desc: "メモを10回書いた", earned: (s) => s.memoCount >= 10 },
+    { emoji: "🧭", title: "自己分析家", desc: "AI分析を使った", earned: (s) => s.usedAi },
+    { emoji: "📅", title: "記録30日", desc: "通算30日記録した", earned: (s) => s.total >= 30 },
+    { emoji: "🔥", title: "30日連続", desc: "30日続けて記録した", earned: (s) => s.maxStreak >= 30 },
+    { emoji: "📅", title: "記録100日", desc: "通算100日記録した", earned: (s) => s.total >= 100 },
+  ];
 
   // Group logs (already sorted desc) into months, preserving order.
   const groupByMonth = () => {
@@ -1282,6 +1344,47 @@ MRTQ: 精神×緊張緩和×群×静
                   </div>
                 );
               })()}
+
+              {/* ストリーク */}
+              {(() => {
+                const streak = computeStreak();
+                if (streak < 2) return null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(135deg,#fff3e0,#ffe2c4)", border: "1.5px solid #f5c98a", borderRadius: 14, padding: "12px 16px", marginBottom: 12 }}>
+                    <span style={{ fontSize: 26 }}>🔥</span>
+                    <div>
+                      <p style={{ fontSize: 16, fontWeight: 800, color: "#c05a00", margin: 0 }}>{streak}日連続で記録中！</p>
+                      <p style={{ fontSize: 11, color: "#c08a50", margin: "2px 0 0" }}>この調子で続けよう</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 実績バッジ */}
+              {(() => {
+                const stats = computeBadgeStats();
+                const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
+                return (
+                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
+                      <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+                      {BADGES.map((b) => {
+                        const got = b.earned(stats);
+                        return (
+                          <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
+                            <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
+                            <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={S.patternBox}>
                 <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
                 {!aiAnalysis && !aiLoading && logs.length >= 3 && user && (
