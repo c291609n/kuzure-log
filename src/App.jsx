@@ -1360,31 +1360,6 @@ MRTQ: 精神×緊張緩和×群×静
                 );
               })()}
 
-              {/* 実績バッジ */}
-              {(() => {
-                const stats = computeBadgeStats();
-                const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
-                return (
-                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
-                      <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-                      {BADGES.map((b) => {
-                        const got = b.earned(stats);
-                        return (
-                          <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
-                            <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
-                            <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
               <div style={S.patternBox}>
                 <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
                 {!aiAnalysis && !aiLoading && logs.length >= 3 && user && (
@@ -1496,6 +1471,31 @@ MRTQ: 精神×緊張緩和×群×静
                   )}
                 </div>
               )}
+              {/* 実績バッジ */}
+              {(() => {
+                const stats = computeBadgeStats();
+                const earnedCount = BADGES.filter((b) => b.earned(stats)).length;
+                return (
+                  <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em" }}>実績</span>
+                      <span style={{ fontSize: 11, color: "#bba", fontWeight: 700 }}>{earnedCount}/{BADGES.length}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+                      {BADGES.map((b) => {
+                        const got = b.earned(stats);
+                        return (
+                          <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
+                            <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
+                            <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ ...S.secHead, margin: "22px 0 2px" }}><div style={S.secBar("#1a1a1a")}/><span style={S.secLabel}>{showAllLogs ? "すべてのログ" : "最近のログ"}</span></div>
               {!showAllLogs ? (
                 <>
