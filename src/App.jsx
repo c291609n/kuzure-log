@@ -216,7 +216,6 @@ export default function App() {
   const [actions, setActions] = useState([]);
   const [motives, setMotives] = useState([]);
   const [memo, setMemo] = useState("");
-  const [otherEvent, setOtherEvent] = useState("");
   const [eventMemo, setEventMemo] = useState("");
   const [recovery, setRecovery] = useState([]);
   const [recoveryItems, setRecoveryItems] = useState(RECOVERY_DEFAULT);
@@ -300,6 +299,8 @@ export default function App() {
         if (motOrderRaw) setMotiveItems(JSON.parse(motOrderRaw));
         const savedType = localStorage.getItem("kuzure_recovery_type");
         if (savedType && RECOVERY_TYPES[savedType]) setRecoveryTypeFull(RECOVERY_TYPES[savedType]);
+        const savedTypeDate = localStorage.getItem("kuzure_recovery_type_date");
+        if (savedTypeDate) setDiagnosedAt(savedTypeDate);
         const periodRaw = localStorage.getItem(PERIOD_KEY);
         if (periodRaw) {
           const pd = JSON.parse(periodRaw);
@@ -354,7 +355,7 @@ export default function App() {
     setActions(entry.actions || []);
     setMotives(entry.motives || []);
     setMemo(entry.memo || "");
-    setOtherEvent(entry.otherEvent || "");
+    setEventMemo(entry.eventMemo || "");
     setRecovery(entry.recovery || []);
     setIsPeriod(entry.isPeriod || false);
     setSelectedDate(entry.date);
@@ -378,7 +379,7 @@ export default function App() {
   const handleSave = async () => {
     if (!sleep || !fatigue || events.length === 0 || kuzure === null) { alert("全項目を選んでください"); return; }
     const dateToSave = selectedDate || todayStr();
-    const entry = { date: dateToSave, sleep, fatigue, events, kuzure, actions, motives, memo, otherEvent, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
+    const entry = { date: dateToSave, sleep, fatigue, events, kuzure, actions, motives, memo, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
     if (trackPeriod && isPeriod) setPeriodDates((p) => p.includes(dateToSave) ? p : [...p, dateToSave]);
     
     // Save to Supabase if logged in
@@ -402,7 +403,7 @@ export default function App() {
       saveLogs(newLogs);
     }
     setSleep(null); setFatigue(null); setEvents([]); setKuzure(null);
-    setActions([]); setMotives([]); setMemo(""); setOtherEvent(""); setRecovery([]); setIsPeriod(false); setEventMemo("");
+    setActions([]); setMotives([]); setMemo(""); setRecovery([]); setIsPeriod(false); setEventMemo("");
     if (dateToSave === todayStr()) setAlreadyLogged(true);
     setEditingLog(null);
     setSaved(true);
@@ -827,7 +828,7 @@ MRTQ: 精神×緊張緩和×群×静
           {editingLog && (
             <div style={{ background: "#fff4e6", border: "1.5px solid #f5c4a8", borderRadius: 14, padding: "10px 16px", marginBottom: 12, fontSize: 13, color: "#b85c00", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span>✏️ {editingLog.date} の記録を編集中</span>
-              <button onClick={() => { setEditingLog(null); setSleep(null); setFatigue(null); setEvents([]); setKuzure(null); setActions([]); setMotives([]); setMemo(""); setOtherEvent(""); setRecovery([]); setSelectedDate(""); }} style={{ fontSize: 12, color: "#b85c00", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>キャンセル</button>
+              <button onClick={() => { setEditingLog(null); setSleep(null); setFatigue(null); setEvents([]); setKuzure(null); setActions([]); setMotives([]); setMemo(""); setEventMemo(""); setRecovery([]); setSelectedDate(""); }} style={{ fontSize: 12, color: "#b85c00", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>キャンセル</button>
             </div>
           )}
           {alreadyLogged && !saved && !editingLog && <div style={S.alreadyBox}>今日はもう記録済みです。別の日の分を記録することもできます。</div>}
