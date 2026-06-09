@@ -281,33 +281,6 @@ export default function App() {
     if (!authLoading && !user && !browserOnly) setShowAuthModal(true);
   }, [authLoading, user, browserOnly]);
 
-  // Load / persist the user's dashboard section order.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SECTION_ORDER_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw).filter((k) => SECTION_DEFAULT_ORDER.includes(k));
-        const merged = [...saved, ...SECTION_DEFAULT_ORDER.filter((k) => !saved.includes(k))];
-        setSectionOrder(merged);
-      }
-    } catch {}
-  }, []);
-  useEffect(() => {
-    try { localStorage.setItem(SECTION_ORDER_KEY, JSON.stringify(sectionOrder)); } catch {}
-  }, [sectionOrder]);
-
-  const onSecDragEnd = () => {
-    if (dragSec.current !== null && dragSecOver !== null && dragSec.current !== dragSecOver) {
-      setSectionOrder((prev) => {
-        const next = [...prev];
-        const [moved] = next.splice(dragSec.current, 1);
-        next.splice(dragSecOver, 0, moved);
-        return next;
-      });
-    }
-    dragSec.current = null; setDragSecOver(null);
-  };
-
   const loadUserData = async (userId) => {
     try {
       // Load logs from Supabase
@@ -582,6 +555,33 @@ export default function App() {
   const [sectionOrder, setSectionOrder] = useState(SECTION_DEFAULT_ORDER);
   const dragSec = useRef(null);
   const [dragSecOver, setDragSecOver] = useState(null);
+
+  // Load / persist the user's dashboard section order. (Declared after the state above to avoid TDZ.)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SECTION_ORDER_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw).filter((k) => SECTION_DEFAULT_ORDER.includes(k));
+        const merged = [...saved, ...SECTION_DEFAULT_ORDER.filter((k) => !saved.includes(k))];
+        setSectionOrder(merged);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SECTION_ORDER_KEY, JSON.stringify(sectionOrder)); } catch {}
+  }, [sectionOrder]);
+
+  const onSecDragEnd = () => {
+    if (dragSec.current !== null && dragSecOver !== null && dragSec.current !== dragSecOver) {
+      setSectionOrder((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(dragSec.current, 1);
+        next.splice(dragSecOver, 0, moved);
+        return next;
+      });
+    }
+    dragSec.current = null; setDragSecOver(null);
+  };
   const [reportMonth, setReportMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
   const [reports, setReports] = useState({});
   const [reportLoading, setReportLoading] = useState(false);
