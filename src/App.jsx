@@ -552,6 +552,7 @@ export default function App() {
   const [logsView, setLogsView] = useState("list");
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
   const [reorderMode, setReorderMode] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState(null);
   const [sectionOrder, setSectionOrder] = useState(SECTION_DEFAULT_ORDER);
   const dragSec = useRef(null);
   const [dragSecOver, setDragSecOver] = useState(null);
@@ -940,10 +941,17 @@ ${JSON.stringify(data, null, 2)}`
   // GitHub-style heatmap of the recent weeks: red = 崩れ, green = なし, grey = no record.
   const renderHeatmap = () => {
     const byKey = logByDay();
-    const WEEKS = 18;
+    const MAX_WEEKS = 18;
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const start = new Date(today);
-    start.setDate(start.getDate() - (WEEKS * 7 - 1));
+    // Don't show empty cells from before tracking began: start at the first record (capped to MAX_WEEKS).
+    const cap = new Date(today); cap.setDate(cap.getDate() - (MAX_WEEKS * 7 - 1));
+    let start = cap;
+    if (logs.length) {
+      const [oy, om, od] = dayKey(logs[logs.length - 1].date).split("/").map(Number);
+      const oldestDate = new Date(oy, om - 1, od);
+      start = oldestDate > cap ? oldestDate : cap;
+    }
+    start = new Date(start);
     start.setDate(start.getDate() - start.getDay()); // back to Sunday
     const days = [];
     const d = new Date(start);
@@ -959,7 +967,8 @@ ${JSON.stringify(data, null, 2)}`
     };
     return (
       <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 12 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 12px" }}>崩れヒートマップ（直近{WEEKS}週）</p>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 4px" }}>崩れヒートマップ</p>
+        <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 12px" }}>マス1つが1日。赤が減るほど調子が上向きです</p>
         <div style={{ display: "flex", gap: 3, justifyContent: "center" }}>
           {weeks.map((w, i) => (
             <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1338,7 +1347,7 @@ ${JSON.stringify(data, null, 2)}`
             {BADGES.map((b) => {
               const got = b.earned(stats);
               return (
-                <div key={b.title} title={b.desc} style={{ textAlign: "center", opacity: got ? 1 : 0.4 }}>
+                <div key={b.title} onClick={() => setSelectedBadge({ ...b, got })} style={{ textAlign: "center", opacity: got ? 1 : 0.4, cursor: "pointer" }}>
                   <div style={{ fontSize: 26, filter: got ? "none" : "grayscale(1)", lineHeight: 1.2 }}>{got ? b.emoji : "🔒"}</div>
                   <p style={{ fontSize: 9, color: got ? "#7a6a4a" : "#bbb", margin: "3px 0 0", fontWeight: got ? 700 : 400, lineHeight: 1.3 }}>{b.title}</p>
                 </div>
@@ -1822,6 +1831,17 @@ ${JSON.stringify(data, null, 2)}`
               )}
             </>
           )}
+        </div>
+      )}
+      {selectedBadge && (
+        <div onClick={() => setSelectedBadge(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "24px 20px", maxWidth: 280, width: "100%", textAlign: "center" }}>
+            <div style={{ fontSize: 48, filter: selectedBadge.got ? "none" : "grayscale(1)", opacity: selectedBadge.got ? 1 : 0.5, lineHeight: 1.2 }}>{selectedBadge.got ? selectedBadge.emoji : "🔒"}</div>
+            <p style={{ fontSize: 16, fontWeight: 800, color: "#1a1a1a", margin: "8px 0 4px" }}>{selectedBadge.title}</p>
+            <p style={{ fontSize: 13, color: "#888", margin: "0 0 12px", lineHeight: 1.6 }}>{selectedBadge.desc}</p>
+            <span style={{ display: "inline-block", fontSize: 12, fontWeight: 700, padding: "4px 14px", borderRadius: 99, background: selectedBadge.got ? "#eaf6ea" : "#f0ece4", color: selectedBadge.got ? "#1a8a4a" : "#aaa" }}>{selectedBadge.got ? "獲得済み ✓" : "未獲得"}</span>
+            <button onClick={() => setSelectedBadge(null)} style={{ width: "100%", padding: "11px", marginTop: 16, fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer" }}>閉じる</button>
+          </div>
         </div>
       )}
       {showAuthModal && (
