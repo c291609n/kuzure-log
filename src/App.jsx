@@ -649,12 +649,14 @@ ${JSON.stringify(summary, null, 2)}`
       if (text) { try { localStorage.setItem("kuzure_used_ai", "1"); } catch {} }
       if (!text) {
         const err = data?.error?.message || (typeof data?.error === "string" ? data.error : "") || JSON.stringify(data).slice(0, 300);
-        setAiAnalysis("分析に失敗しました（" + err + "）");
+        console.error("AI analysis failed:", err);
+        setAiAnalysis("うまく分析できませんでした。少し時間をおいて、もう一度お試しください。");
       } else {
         setAiAnalysis(text);
       }
     } catch (e) {
-      setAiAnalysis("分析に失敗しました（" + (e?.message || "通信エラー") + "）");
+      console.error("AI analysis error:", e);
+      setAiAnalysis("うまく分析できませんでした。少し時間をおいて、もう一度お試しください。");
     }
     setAiLoading(false);
   };
