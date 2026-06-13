@@ -24,7 +24,7 @@ const SECTION_META = {
   pattern: { label: "パターン分析", emoji: "🔮" },
   type: { label: "回復タイプ", emoji: "🧭" },
   report: { label: "月次レポート", emoji: "📖" },
-  heatmap: { label: "ヒートマップ", emoji: "🟥" },
+  heatmap: { label: "崩れの推移", emoji: "📈" },
   logs: { label: "ログ", emoji: "📝" },
   badges: { label: "実績", emoji: "🏅" },
 };
@@ -945,53 +945,48 @@ ${JSON.stringify(data, null, 2)}`
 
   const logByDay = () => { const m = {}; logs.forEach((l) => { m[dayKey(l.date)] = l; }); return m; };
 
-  // GitHub-style heatmap of the recent weeks: red = 崩れ, green = なし, grey = no record.
-  const renderHeatmap = () => {
-    const byKey = logByDay();
-    const MAX_WEEKS = 18;
+  // Weekly trend: number of 崩れ per week as a simple bar chart (lower = better).
+  const renderTrend = () => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    // Don't show empty cells from before tracking began: start at the first record (capped to MAX_WEEKS).
-    const cap = new Date(today); cap.setDate(cap.getDate() - (MAX_WEEKS * 7 - 1));
-    let start = cap;
+    const curWeekStart = new Date(today); curWeekStart.setDate(today.getDate() - today.getDay());
+    const MAX_WEEKS = 8;
+    // Start from the first record's week, but show at most MAX_WEEKS.
+    let count = MAX_WEEKS;
     if (logs.length) {
       const [oy, om, od] = dayKey(logs[logs.length - 1].date).split("/").map(Number);
-      const oldestDate = new Date(oy, om - 1, od);
-      start = oldestDate > cap ? oldestDate : cap;
+      const oldest = new Date(oy, om - 1, od);
+      const oldestWeek = new Date(oldest); oldestWeek.setDate(oldest.getDate() - oldest.getDay());
+      const weeksSpan = Math.round((curWeekStart - oldestWeek) / (7 * 86400000)) + 1;
+      count = Math.min(MAX_WEEKS, Math.max(1, weeksSpan));
     }
-    start = new Date(start);
-    start.setDate(start.getDate() - start.getDay()); // back to Sunday
-    const days = [];
-    const d = new Date(start);
-    while (d <= today) { days.push(new Date(d)); d.setDate(d.getDate() + 1); }
-    while (days.length % 7 !== 0) days.push(null);
     const weeks = [];
-    for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
-    const color = (dt) => {
-      if (!dt) return "transparent";
-      const log = byKey[keyOfDate(dt)];
-      if (!log) return "#ece8e0";
-      return log.kuzure ? "#e0503a" : "#7bc47f";
-    };
+    for (let w = count - 1; w >= 0; w--) {
+      const ws = new Date(curWeekStart); ws.setDate(curWeekStart.getDate() - w * 7);
+      const we = new Date(ws); we.setDate(ws.getDate() + 6);
+      weeks.push({ start: ws, end: we, kuzure: 0, total: 0 });
+    }
+    logs.forEach((l) => {
+      const [y, m, d] = dayKey(l.date).split("/").map(Number);
+      const dt = new Date(y, m - 1, d);
+      const wk = weeks.find((w) => dt >= w.start && dt <= w.end);
+      if (wk) { wk.total++; if (l.kuzure) wk.kuzure++; }
+    });
+    const maxK = Math.max(1, ...weeks.map((w) => w.kuzure));
     return (
       <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 12 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 4px" }}>崩れヒートマップ</p>
-        <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 12px" }}>マス1つが1日。赤が減るほど調子が上向きです</p>
-        <div style={{ display: "flex", gap: 3, justifyContent: "center" }}>
-          {weeks.map((w, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {w.map((dt, j) => (
-                <div key={j} title={dt ? keyOfDate(dt) : ""} style={{ width: 11, height: 11, borderRadius: 2, background: color(dt) }} />
-              ))}
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 12 }}>
-          {[["#e0503a", "崩れ"], ["#7bc47f", "崩れなし"], ["#ece8e0", "記録なし"]].map(([c, t]) => (
-            <div key={t} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
-              <span style={{ fontSize: 10, color: "#999" }}>{t}</span>
-            </div>
-          ))}
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 4px" }}>崩れの推移（週ごと）</p>
+        <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 14px" }}>棒が低い週ほど崩れが少なめです</p>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 90 }}>
+          {weeks.map((wk, i) => {
+            const h = wk.total === 0 ? 0 : Math.round((wk.kuzure / maxK) * 64) + (wk.kuzure > 0 ? 6 : 3);
+            return (
+              <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: wk.total === 0 ? "#ddd" : "#e0503a", marginBottom: 3 }}>{wk.total === 0 ? "–" : wk.kuzure}</span>
+                <div style={{ width: "72%", height: h, minHeight: wk.total === 0 ? 0 : 3, background: wk.kuzure > 0 ? "#e0503a" : "#d9e8d9", borderRadius: "4px 4px 0 0" }} />
+                <span style={{ fontSize: 9, color: "#aaa", marginTop: 5 }}>{wk.start.getMonth() + 1}/{wk.start.getDate()}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1294,7 +1289,7 @@ ${JSON.stringify(data, null, 2)}`
         </div>
       );
     }
-    if (key === "heatmap") return <div style={{ marginBottom: 12 }}>{renderHeatmap()}</div>;
+    if (key === "heatmap") return <div style={{ marginBottom: 12 }}>{renderTrend()}</div>;
     if (key === "logs") {
       return (
         <div style={{ marginBottom: 12 }}>
