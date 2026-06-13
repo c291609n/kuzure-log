@@ -647,9 +647,14 @@ ${JSON.stringify(summary, null, 2)}`
       const data = await res.json();
       const text = (data.content||[]).map((c) => c.text||"").join("");
       if (text) { try { localStorage.setItem("kuzure_used_ai", "1"); } catch {} }
-      setAiAnalysis(text || "分析に失敗しました。もう一度試してください。");
+      if (!text) {
+        const err = data?.error?.message || (typeof data?.error === "string" ? data.error : "") || JSON.stringify(data).slice(0, 300);
+        setAiAnalysis("分析に失敗しました（" + err + "）");
+      } else {
+        setAiAnalysis(text);
+      }
     } catch (e) {
-      setAiAnalysis("分析に失敗しました。もう一度試してください。");
+      setAiAnalysis("分析に失敗しました（" + (e?.message || "通信エラー") + "）");
     }
     setAiLoading(false);
   };
