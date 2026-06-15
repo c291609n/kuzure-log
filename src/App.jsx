@@ -16,6 +16,35 @@ const lvl5 = (v) => (v == null ? 0 : Math.min(5, Math.max(1, Math.round(v / 25) 
 const sleepLabel = (v) => SLEEP_LABELS[lvl5(v)];
 const fatigueLabel = (v) => FATIGUE_LABELS[lvl5(v)];
 const kuzureLabelOf = (lv) => (lv == null ? "" : lv <= 0 ? "崩れてない" : KUZURE_LABELS[Math.min(5, Math.max(1, Math.round(lv / 20)))]);
+
+// 本日のことば: gentle daily phrase, rotates by day (stable within a day).
+const QUOTES = [
+  "今日のあなたも、よくやってる。",
+  "崩れた日があっても大丈夫。記録してるだけで前進。",
+  "完璧じゃなくていい。続けてることが力になる。",
+  "疲れたら休んでいい。休むのも回復の一部。",
+  "昨日のことは昨日のもの。今日は今日でいこう。",
+  "小さな「できた」を、自分でちゃんと認めてあげて。",
+  "あなたのペースでいい。比べなくて大丈夫。",
+  "調子に波があるのは、自然なこと。",
+  "自分にやさしくする日が、あっていい。",
+  "向き合ってる時点で、もう十分えらい。",
+  "うまくいかない日も、あなたの価値は変わらない。",
+  "深呼吸ひとつ。今ここから。",
+  "崩れても、また立て直せる。何度でも。",
+  "がんばりすぎてないか、ときどき自分に聞いてあげて。",
+  "今日できることを、ひとつだけ。",
+  "眠れた朝も、眠れなかった朝も、来てくれてありがとう。",
+  "気分は天気みたいなもの。ずっとは続かない。",
+  "自分を責める代わりに、自分を労わってみよう。",
+  "記録は、未来の自分への手紙。",
+  "無理しないことも、立派な選択。",
+  "今のあなたで、ちゃんと大丈夫。",
+  "進めた日も、立ち止まった日も、どっちも大事。",
+  "ゆっくりでいい。止まらなければ、それでいい。",
+  "ここに来たあなたを、まず褒めよう。",
+];
+const todayQuote = () => { const d = new Date(); const doy = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000); return QUOTES[doy % QUOTES.length]; };
 const EVENTS_DEFAULT = ["バイト", "授業", "友達", "勉強", "運動", "特になし"];
 const ACTIONS_DEFAULT = ["爆食い", "スマホ延々", "そのまま寝落ち"];
 const MOTIVES_DEFAULT = ["だるい", "そわそわ", "しんどい", "何もしたくない", "めんどくさい", "わかんない"];
@@ -1766,6 +1795,13 @@ ${toneInstruction()}
 
       {tab === "record" && (
         <div>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "linear-gradient(135deg,#f3f0fb,#efe9fb)", border: "1.5px solid #e0d8f5", borderRadius: 16, padding: "13px 16px", marginBottom: 16 }}>
+            <span style={{ fontSize: 18, lineHeight: 1.4 }}>🌿</span>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#9a80d0", letterSpacing: "0.08em", margin: "0 0 3px" }}>本日のことば</p>
+              <p style={{ fontSize: 14, color: "#4a3a7a", lineHeight: 1.7, margin: 0, fontWeight: 600 }}>{todayQuote()}</p>
+            </div>
+          </div>
           {editingLog && (
             <div style={{ background: "#fff4e6", border: "1.5px solid #f5c4a8", borderRadius: 14, padding: "10px 16px", marginBottom: 12, fontSize: 13, color: "#b85c00", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span>✏️ {editingLog.date} の記録を編集中</span>
