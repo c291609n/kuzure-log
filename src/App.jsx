@@ -318,6 +318,8 @@ export default function App() {
       if (motOrderRaw) setMotiveItems(JSON.parse(motOrderRaw));
       const savedType = localStorage.getItem("kuzure_recovery_type");
       if (savedType && RECOVERY_TYPES[savedType]) setRecoveryTypeFull(RECOVERY_TYPES[savedType]);
+      const savedAxes = localStorage.getItem("kuzure_recovery_axes");
+      if (savedAxes) setRecoveryAxes(JSON.parse(savedAxes));
       const savedTypeDate = localStorage.getItem("kuzure_recovery_type_date");
       if (savedTypeDate) setDiagnosedAt(savedTypeDate);
       const periodRaw = localStorage.getItem(PERIOD_KEY);
@@ -334,6 +336,7 @@ export default function App() {
     recoveryItems, eventItems, actionItems, motiveItems,
     periodTrack: trackPeriod, periodDates,
     recoveryType: recoveryTypeFull ? Object.keys(RECOVERY_TYPES).find((k) => RECOVERY_TYPES[k] === recoveryTypeFull) || null : null,
+    recoveryAxes: recoveryAxes || null,
     diagnosedAt: diagnosedAt || null,
     sectionOrder,
   });
@@ -348,6 +351,7 @@ export default function App() {
     if (typeof s.periodTrack === "boolean") setTrackPeriod(s.periodTrack);
     if (Array.isArray(s.periodDates)) setPeriodDates(s.periodDates);
     if (s.recoveryType && RECOVERY_TYPES[s.recoveryType]) setRecoveryTypeFull(RECOVERY_TYPES[s.recoveryType]);
+    if (s.recoveryAxes && typeof s.recoveryAxes === "object") setRecoveryAxes(s.recoveryAxes);
     if (s.diagnosedAt) setDiagnosedAt(s.diagnosedAt);
     if (Array.isArray(s.sectionOrder)) {
       const merged = [...s.sectionOrder.filter((k) => SECTION_DEFAULT_ORDER.includes(k)), ...SECTION_DEFAULT_ORDER.filter((k) => !s.sectionOrder.includes(k))];
@@ -711,6 +715,7 @@ ${JSON.stringify(summary, null, 2)}`
   };
 
   const [recoveryTypeFull, setRecoveryTypeFull] = useState(null);
+  const [recoveryAxes, setRecoveryAxes] = useState(null); // { cause, timing, style, means } 0..100 toward first pole
   const [diagnosedAt, setDiagnosedAt] = useState(null);
   const [typeLoading, setTypeLoading] = useState(false);
 
@@ -723,7 +728,7 @@ ${JSON.stringify(summary, null, 2)}`
     if (JSON.stringify(next) === JSON.stringify(current)) return;
     const t = setTimeout(() => { supabase.auth.updateUser({ data: { settings: next } }); }, 1500);
     return () => clearTimeout(t);
-  }, [user, recoveryItems, eventItems, actionItems, motiveItems, trackPeriod, periodDates, recoveryTypeFull, diagnosedAt, sectionOrder]);
+  }, [user, recoveryItems, eventItems, actionItems, motiveItems, trackPeriod, periodDates, recoveryTypeFull, recoveryAxes, diagnosedAt, sectionOrder]);
   const [showAllTypes, setShowAllTypes] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [selectedType, setSelectedType] = useState(null);
@@ -760,53 +765,83 @@ ${JSON.stringify(summary, null, 2)}`
 
       const res = await callAnalyze({
           model: "claude-sonnet-4-6",
-          max_tokens: 100,
+          max_tokens: 80,
           temperature: 0,
           messages: [{
             role: "user",
-            content: `以下のログデータから、この人の回復タイプコードを1つだけ選んでください。
+            content: `以下のログデータから、この人の回復傾向を4つの軸で0〜100のスコアで判定してください。各軸、左の特性に近いほど100、右に近いほど0、50は中間です。
 
-コード一覧：
-PESA: 身体×蓄積×独×動
-PESQ: 身体×蓄積×独×静
-PETA: 身体×蓄積×群×動
-PETQ: 身体×蓄積×群×静
-PRSA: 身体×緊張緩和×独×動
-PRSQ: 身体×緊張緩和×独×静
-PRTA: 身体×緊張緩和×群×動
-PRTQ: 身体×緊張緩和×群×静
-MESA: 精神×蓄積×独×動
-MESQ: 精神×蓄積×独×静
-META: 精神×蓄積×群×動
-METQ: 精神×蓄積×群×静
-MRSA: 精神×緊張緩和×独×動
-MRSQ: 精神×緊張緩和×独×静
-MRTA: 精神×緊張緩和×群×動
-MRTQ: 精神×緊張緩和×群×静
+軸1 身体(100)←→精神(0)：崩れの原因が身体的か精神的か
+軸2 蓄積(100)←→緊張緩和(0)：疲れを溜め込んで崩れるか、緊張が解けた瞬間に崩れるか
+軸3 独(100)←→群(0)：ひとりで回復するか、人と一緒に回復するか
+軸4 動(100)←→静(0)：体を動かして回復するか、静かにして回復するか
 
-ログ：${JSON.stringify(summary)}
+次の形式で数字だけ返してください（他の文章は不要）：
+身体=62
+蓄積=38
+独=71
+動=45
 
-コードだけ返してください（例：PE-SQ）`
+ログ：${JSON.stringify(summary)}`
           }]
         });
       if (res.status === 401) { setTypeLoading(false); return; }
       const data = await res.json();
-      const code = (data.content||[]).map((c) => c.text||"").join("").trim().toUpperCase();
-      const matched = Object.keys(RECOVERY_TYPES).find(k => code.includes(k));
-      if (matched) {
-        setRecoveryTypeFull(RECOVERY_TYPES[matched]);
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
-        setDiagnosedAt(dateStr);
-        try { 
-          localStorage.setItem("kuzure_recovery_type", matched);
-          localStorage.setItem("kuzure_recovery_type_date", dateStr);
-        } catch(e) {}
+      const text = (data.content||[]).map((c) => c.text||"").join("");
+      const num = (label) => { const m = text.match(new RegExp(label + "\\s*[=＝:：]\\s*(\\d+)")); return m ? Math.max(0, Math.min(100, parseInt(m[1], 10))) : null; };
+      const cause = num("身体"), timing = num("蓄積"), style = num("独"), means = num("動");
+      if ([cause, timing, style, means].every((v) => v !== null)) {
+        const code = (cause >= 50 ? "P" : "M") + (timing >= 50 ? "E" : "R") + (style >= 50 ? "S" : "T") + (means >= 50 ? "A" : "Q");
+        const axes = { cause, timing, style, means };
+        if (RECOVERY_TYPES[code]) {
+          setRecoveryTypeFull(RECOVERY_TYPES[code]);
+          setRecoveryAxes(axes);
+          const now = new Date();
+          const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+          setDiagnosedAt(dateStr);
+          try {
+            localStorage.setItem("kuzure_recovery_type", code);
+            localStorage.setItem("kuzure_recovery_axes", JSON.stringify(axes));
+            localStorage.setItem("kuzure_recovery_type_date", dateStr);
+          } catch (e) {}
+        }
       }
     } catch (e) {
       console.error(e);
     }
     setTypeLoading(false);
+  };
+
+  // Renders the 4 MBTI-style axis bars for the recovery type.
+  const renderAxisBars = (axes, color) => {
+    if (!axes) return null;
+    const rows = [
+      ["原因", "身体", "精神", axes.cause],
+      ["タイミング", "蓄積", "緊張緩和", axes.timing],
+      ["スタイル", "ひとり", "みんな", axes.style],
+      ["手段", "動く", "静か", axes.means],
+    ];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+        {rows.map(([axis, left, right, score]) => {
+          const mid = Math.abs(score - 50) <= 8;
+          const leftWins = score >= 50;
+          return (
+            <div key={axis}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 11, fontWeight: leftWins ? 700 : 400, color: leftWins ? color : "#aaa" }}>{left}</span>
+                <span style={{ fontSize: 10, color: "#bbb" }}>{mid ? "ほぼ中間" : (leftWins ? `${left} ${score}%` : `${right} ${100 - score}%`)}</span>
+                <span style={{ fontSize: 11, fontWeight: !leftWins ? 700 : 400, color: !leftWins ? color : "#aaa" }}>{right}</span>
+              </div>
+              <div style={{ position: "relative", height: 8, borderRadius: 99, background: "#ece8e0" }}>
+                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${score}%`, background: color, borderRadius: 99, opacity: 0.85 }} />
+                <div style={{ position: "absolute", left: `calc(${score}% - 1px)`, top: -2, width: 2, height: 12, background: "#1a1a1a", opacity: 0.25 }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   // Strip markdown artifacts (asterisks, bullets, leading numbers) the model may emit.
@@ -1249,6 +1284,7 @@ ${JSON.stringify(data, null, 2)}`
                   {diagnosedAt && <p style={{ fontSize: 10, color: "#bbb", margin: "2px 0 0" }}>{diagnosedAt}時点（{logs.length}日分）</p>}
                 </div>
               </div>
+              {renderAxisBars(recoveryAxes, recoveryTypeFull.color)}
               <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
                 <button onClick={(e) => { e.stopPropagation(); runTypeAnalysis(); }} style={{ fontSize: 11, color: typeLoading ? "#ccc" : "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>{typeLoading ? "診断中..." : "再診断する"}</button>
                 <button onClick={(e) => { e.stopPropagation(); setShowAllTypes(true); }} style={{ fontSize: 11, color: "#999", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>全タイプを見る</button>
