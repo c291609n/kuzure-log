@@ -339,6 +339,8 @@ export default function App() {
       }
       const savedTone = localStorage.getItem("kuzure_tone");
       if (savedTone && TONES[savedTone]) setTone(savedTone);
+      const aiHintRaw = localStorage.getItem("kuzure_ai_hint");
+      if (aiHintRaw) { const h = JSON.parse(aiHintRaw); if (h && h.date === todayStr()) setAiHint(h); }
     } catch {}
   };
 
@@ -601,6 +603,8 @@ export default function App() {
   const [reorderMode, setReorderMode] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState(null);
   const [showHintWhy, setShowHintWhy] = useState(false);
+  const [aiHint, setAiHint] = useState(null); // { date, text } cached per day
+  const [aiHintLoading, setAiHintLoading] = useState(false);
   const [sectionOrder, setSectionOrder] = useState(SECTION_DEFAULT_ORDER);
   const dragSec = useRef(null);
   const [dragSecOver, setDragSecOver] = useState(null);
@@ -1207,6 +1211,33 @@ ${JSON.stringify(data, null, 2)}`
     return head + tail;
   };
 
+  // Login-only: let AI rewrite today's hint in the chosen tone (cached per day).
+  const runDailyHint = async (state, action, reason) => {
+    if (!action) return;
+    setAiHintLoading(true);
+    try {
+      const stateLabel = { rough: "最近、崩れが続いている", mild: "直近で崩れた日があった", good: "最近は崩れていない" }[state] || "ふつう";
+      const res = await callAnalyze({
+        model: "claude-sonnet-4-6", max_tokens: 150,
+        messages: [{ role: "user", content: `あなたは私の崩れログを見守るパートナーです。今日の「ひとこと」を1〜2文で書いてください。
+${toneInstruction()}
+今の状況: ${stateLabel}
+さりげなく勧めたい回復行動: 「${action}」
+根拠データ: ${reason}
+ルール: 記号（*#・番号）は使わない。短く。説教くさくしない。「${action}」を自然に織り込む。ひとことだけ返す。` }],
+      });
+      if (res.status === 401) { setAiHintLoading(false); return; }
+      const data = await res.json();
+      const text = (data.content || []).map((c) => c.text || "").join("").split("\n").map(cleanLine).filter(Boolean).join(" ");
+      if (text) {
+        const h = { date: todayStr(), text };
+        setAiHint(h);
+        try { localStorage.setItem("kuzure_ai_hint", JSON.stringify(h)); localStorage.setItem("kuzure_used_ai", "1"); } catch {}
+      }
+    } catch {}
+    setAiHintLoading(false);
+  };
+
   const renderHint = () => {
     if (!logs.length) return null;
     const recentK = logs.slice(0, 3).filter((l) => l.kuzure).length;
@@ -1219,17 +1250,27 @@ ${JSON.stringify(data, null, 2)}`
     else if (recentK >= 2) state = "rough";
     else if (recentK === 1) state = "mild";
     else state = "good";
-    const msg = hintText(state, action);
     const reason = action ? `「${action}」をした${best.tot}日のうち${best.no}日は崩れずに済んでいます${recoveryTypeFull ? `。回復タイプ「${recoveryTypeFull.name}」のあなたにも合っています` : ""}` : "";
+    const aiActive = aiHint && aiHint.date === todayStr();
+    const displayMsg = aiActive ? aiHint.text : hintText(state, action);
     return (
       <div style={{ background: "linear-gradient(135deg,#fffaf0,#fff3e0)", border: "1.5px solid #f3d9a8", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
-        <p style={{ fontSize: 11, fontWeight: 800, color: "#c08a30", letterSpacing: "0.04em", margin: "0 0 8px" }}>💬 今日のひとこと</p>
-        <p style={{ fontSize: 14, color: "#5a4a2a", lineHeight: 1.7, margin: 0, fontWeight: 600 }}>{msg}</p>
+        <p style={{ fontSize: 11, fontWeight: 800, color: "#c08a30", letterSpacing: "0.04em", margin: "0 0 8px" }}>💬 今日のひとこと{aiActive && <span style={{ fontSize: 10, fontWeight: 600, color: "#b08020", marginLeft: 6 }}>✨AI</span>}</p>
+        <p style={{ fontSize: 14, color: "#5a4a2a", lineHeight: 1.7, margin: 0, fontWeight: 600 }}>{displayMsg}</p>
         {reason && (
           <>
             <button onClick={() => setShowHintWhy((v) => !v)} style={{ fontSize: 11, color: "#c0a060", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0, marginTop: 8 }}>{showHintWhy ? "とじる ▲" : "なんで？ ▼"}</button>
             {showHintWhy && <p style={{ fontSize: 12, color: "#8a7a5a", lineHeight: 1.7, margin: "6px 0 0" }}>{reason}</p>}
           </>
+        )}
+        {user && action && (
+          <div style={{ marginTop: 10 }}>
+            {aiHintLoading ? (
+              <span style={{ fontSize: 12, color: "#c0a060" }}>考え中...</span>
+            ) : (
+              <button onClick={() => runDailyHint(state, action, reason)} style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: "#d9a441", border: "none", borderRadius: 99, padding: "6px 14px", cursor: "pointer" }}>{aiActive ? "別の言い方にする ↻" : "AIに書いてもらう ✨"}</button>
+            )}
+          </div>
         )}
       </div>
     );
