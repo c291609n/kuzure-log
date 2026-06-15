@@ -11,6 +11,10 @@ const EVENTS_ORDER_KEY = "kuzure_events_order";
 const SLEEP_LABELS = ["", "最悪", "悪い", "まあまあ", "良い", "ぐっすり"];
 const FATIGUE_LABELS = ["", "限界", "やや疲れ", "ふつう", "やや元気", "元気"];
 const KUZURE_LABELS = ["崩れてない", "ほんの少し", "少し", "そこそこ", "しっかり", "がっつり"];
+// Sleep/fatigue/kuzure are stored 0-100; bucket to a 1-5 label for display/analysis.
+const lvl5 = (v) => (v == null ? 0 : Math.min(5, Math.max(1, Math.round(v / 25) + 1)));
+const sleepLabel = (v) => SLEEP_LABELS[lvl5(v)];
+const fatigueLabel = (v) => FATIGUE_LABELS[lvl5(v)];
 const EVENTS_DEFAULT = ["バイト", "授業", "友達", "勉強", "運動", "特になし"];
 const ACTIONS_DEFAULT = ["爆食い", "スマホ延々", "そのまま寝落ち"];
 const MOTIVES_DEFAULT = ["だるい", "そわそわ", "しんどい", "何もしたくない", "めんどくさい", "わかんない"];
@@ -228,23 +232,23 @@ function TypeCard({ code, t, onSelect }) {
   );
 }
 
-// Smooth slider with a live value display (used for sleep / fatigue / kuzure degree).
-function Slider({ value, min, max, color, onChange, children }) {
-  const v = value == null ? (min + max) / 2 : value;
-  const pct = ((v - min) / (max - min)) * 100;
+// Smooth 0-100 slider with only end-point labels (no leading per-position word).
+function Slider({ value, min, max, color, onChange, leftLabel, rightLabel }) {
   const dim = value == null;
+  const v = dim ? (min + max) / 2 : value;
+  const pct = ((v - min) / (max - min)) * 100;
   return (
-    <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "16px 18px" }}>
-      <div style={{ textAlign: "center", minHeight: 40, marginBottom: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        {value == null
-          ? <span style={{ fontSize: 13, color: "#c0b8a8" }}>スライドして選んでね</span>
-          : children}
-      </div>
+    <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "18px 18px 14px" }}>
       <input
         type="range" className="kz-slider" min={min} max={max} step={1} value={v}
         onChange={(e) => onChange(parseInt(e.target.value, 10))}
         style={{ color, background: dim ? "#e4e0d8" : `linear-gradient(to right, ${color} ${pct}%, #e4e0d8 ${pct}%)` }}
       />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+        <span style={{ fontSize: 11, color: "#b0a898" }}>{leftLabel}</span>
+        {dim && <span style={{ fontSize: 11, color: "#c0b8a8" }}>スライドして選んでね</span>}
+        <span style={{ fontSize: 11, color: "#b0a898" }}>{rightLabel}</span>
+      </div>
     </div>
   );
 }
@@ -325,7 +329,7 @@ export default function App() {
         const mapped = logsData.map(l => ({
           date: l.date, sleep: l.sleep, fatigue: l.fatigue,
           events: l.events || [], kuzure: l.kuzure,
-          kuzureLevel: l.kuzure_level != null ? l.kuzure_level : (l.kuzure ? 3 : 0),
+          kuzureLevel: l.kuzure_level != null ? l.kuzure_level : (l.kuzure ? 50 : 0),
           actions: l.actions || [], motives: l.motives || [],
           memo: l.memo || "", recovery: l.recovery || [],
           isPeriod: l.is_period, eventMemo: l.event_memo || "",
@@ -437,7 +441,7 @@ export default function App() {
     setSleep(entry.sleep);
     setFatigue(entry.fatigue);
     setEvents(entry.events || []);
-    setKuzureLevel(entry.kuzureLevel != null ? entry.kuzureLevel : (entry.kuzure ? 3 : 0));
+    setKuzureLevel(entry.kuzureLevel != null ? entry.kuzureLevel : (entry.kuzure ? 50 : 0));
     setActions(entry.actions || []);
     setMotives(entry.motives || []);
     setMemo(entry.memo || "");
@@ -463,7 +467,7 @@ export default function App() {
   const toggleMulti = (arr, setArr, val) => setArr((p) => p.includes(val) ? p.filter((v) => v !== val) : [...p, val]);
 
   const handleSave = async () => {
-    if (!sleep || !fatigue || events.length === 0 || kuzureLevel === null) { alert("全項目を選んでください"); return; }
+    if (sleep == null || fatigue == null || events.length === 0 || kuzureLevel == null) { alert("全項目を選んでください"); return; }
     const kuzure = kuzureLevel > 0;
     const dateToSave = selectedDate || todayStr();
     const entry = { date: dateToSave, sleep, fatigue, events, kuzure, kuzureLevel, actions, motives, memo, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
@@ -687,8 +691,8 @@ export default function App() {
     try {
       const summary = logs.slice(0, 14).map((l) => ({
         日付: l.date,
-        睡眠満足度: SLEEP_LABELS[l.sleep],
-        疲労感: FATIGUE_LABELS[l.fatigue],
+        睡眠満足度: sleepLabel(l.sleep),
+        疲労感: fatigueLabel(l.fatigue),
         イベント: (l.events||[]).join("・"),
         イベントメモ: l.eventMemo || "",
         崩れ: l.kuzure ? "あり" : "なし",
@@ -805,7 +809,7 @@ ${JSON.stringify(summary, null, 2)}`
     try {
       const summary = logs.slice(0, 14).map((l) => ({
         崩れ: l.kuzure ? "あり" : "なし",
-        疲労: FATIGUE_LABELS[l.fatigue],
+        疲労: fatigueLabel(l.fatigue),
         イベント: (l.events||[]).join("・"),
         気持ち: (l.motives||[]).join("・"),
         試したこと: (l.recovery||[]).join("・"),
@@ -940,7 +944,7 @@ ${JSON.stringify(summary, null, 2)}`
     setReportLoading(true);
     try {
       const data = monthLogs.map((l) => ({
-        日付: l.date, 睡眠満足度: SLEEP_LABELS[l.sleep], 疲労感: FATIGUE_LABELS[l.fatigue],
+        日付: l.date, 睡眠満足度: sleepLabel(l.sleep), 疲労感: fatigueLabel(l.fatigue),
         イベント: (l.events || []).join("・"), 崩れ: l.kuzure ? "あり" : "なし",
         崩れ行動: (l.actions || []).join("・"), 気持ち: (l.motives || []).join("・"),
         試したこと: (l.recovery || []).join("・"), メモ: l.memo || "",
@@ -1192,8 +1196,8 @@ ${JSON.stringify(data, null, 2)}`
               </div>
             </div>
             <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#aaa", marginBottom: 8 }}>
-              <span>睡眠 <b style={{ color: "#5a35c8" }}>{e.sleep}/5</b></span>
-              <span>疲労 <b style={{ color: "#c04820" }}>{FATIGUE_LABELS[e.fatigue]}</b></span>
+              <span>睡眠 <b style={{ color: "#5a35c8" }}>{sleepLabel(e.sleep)}</b></span>
+              <span>疲労 <b style={{ color: "#c04820" }}>{fatigueLabel(e.fatigue)}</b></span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap" }}>
               {e.kuzure
@@ -1320,7 +1324,7 @@ ${toneInstruction()}
               {s.hasPrev && <p style={{ fontSize: 10, color: diffColor, margin: "2px 0 0", fontWeight: 700 }}>先月{s.prevKuzure}回 {diffLabel}</p>}
             </div>
             <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
-              <p style={{ fontSize: 16, fontWeight: 800, color: "#c04820", margin: 0, lineHeight: 1.5 }}>{s.days ? FATIGUE_LABELS[Math.round(s.avgFatigue)] : "—"}</p>
+              <p style={{ fontSize: 16, fontWeight: 800, color: "#c04820", margin: 0, lineHeight: 1.5 }}>{s.days ? fatigueLabel(s.avgFatigue) : "—"}</p>
               <p style={{ fontSize: 10, color: "#999", margin: "5px 0 0" }}>平均疲労</p>
             </div>
             <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid #eee" }}>
@@ -1601,9 +1605,11 @@ ${toneInstruction()}
       for (const l of localLogs) {
         // Same date already in the cloud → keep the cloud version, skip (never overwrite newer data)
         if (byDate[l.date]) { skipped++; continue; }
+        // Legacy local logs used a 1-5 scale; scale up to 0-100.
+        const up = (x) => (x != null && x <= 5 ? Math.round((x - 1) * 25) : x);
         const dbEntry = {
-          user_id: user.id, date: l.date, sleep: l.sleep, fatigue: l.fatigue,
-          events: l.events || [], kuzure: l.kuzure, actions: l.actions || [],
+          user_id: user.id, date: l.date, sleep: up(l.sleep), fatigue: up(l.fatigue),
+          events: l.events || [], kuzure: l.kuzure, kuzure_level: l.kuzureLevel != null ? l.kuzureLevel : (l.kuzure ? 50 : 0), actions: l.actions || [],
           motives: l.motives || [], memo: l.memo || "", recovery: l.recovery || [],
           is_period: l.isPeriod || null, event_memo: l.eventMemo || "",
         };
@@ -1728,19 +1734,13 @@ ${toneInstruction()}
           {/* 睡眠 */}
           <div style={S.secWrap}>
             <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>昨夜（{prevDay(selectedDate || todayStr())}の夜）の睡眠満足度<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
-            <Slider value={sleep} min={1} max={5} color="#5a35c8" onChange={setSleep}>
-              <SleepFace level={sleep} color="#5a35c8" />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#5a35c8", marginTop: 2 }}>{SLEEP_LABELS[sleep]}</span>
-            </Slider>
+            <Slider value={sleep} min={0} max={100} color="#5a35c8" onChange={setSleep} leftLabel="最悪" rightLabel="ぐっすり" />
           </div>
 
           {/* 疲労 */}
           <div style={S.secWrap}>
             <div style={S.secHead}><div style={S.secBar("#c04820")}/><span style={S.secLabel}>今の体の疲労感<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
-            <Slider value={fatigue} min={1} max={5} color="#c04820" onChange={setFatigue}>
-              <FatigueFace level={fatigue} color="#c04820" />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#c04820", marginTop: 2 }}>{FATIGUE_LABELS[fatigue]}</span>
-            </Slider>
+            <Slider value={fatigue} min={0} max={100} color="#c04820" onChange={setFatigue} leftLabel="限界" rightLabel="元気" />
           </div>
 
           {/* イベント */}
@@ -1767,9 +1767,7 @@ ${toneInstruction()}
           {/* 崩れ */}
           <div style={S.secWrap}>
             <div style={S.secHead}><div style={S.secBar("#c02020")}/><span style={S.secLabel}>昨日、どのくらい崩れた？<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
-            <Slider value={kuzureLevel} min={0} max={5} color="#c02020" onChange={setKuzureLevel}>
-              <span style={{ fontSize: 16, fontWeight: 800, color: kuzureLevel === 0 ? "#5a35c8" : "#c02020" }}>{KUZURE_LABELS[kuzureLevel]}</span>
-            </Slider>
+            <Slider value={kuzureLevel} min={0} max={100} color="#c02020" onChange={setKuzureLevel} leftLabel="崩れてない" rightLabel="がっつり" />
             {/* Preview of actions when not 崩れ */}
             {(kuzureLevel === 0 || kuzureLevel === null) && (
               <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
