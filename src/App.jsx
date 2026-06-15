@@ -694,6 +694,7 @@ DETAIL:
 見出しは12文字以内で、思わず読みたくなるキャッチーな小見出し（例：週明けの落とし穴、睡眠が崩れの引き金）。
 本文はその見出しの内容を、データを根拠に1〜2文で。
 区切りは全角の縦棒「｜」を必ず使い、行間は空けない。
+NEXT: 今日から試せる具体的なおすすめ行動を1〜2文で。データ上、崩れにくかった行動を根拠に。
 
 データ：
 ${JSON.stringify(summary, null, 2)}`
@@ -878,8 +879,9 @@ ${JSON.stringify(summary, null, 2)}`
 
   // Split the AI response into a one-line summary + a few clean detail points.
   const parseAnalysis = (raw) => {
-    const sm = raw.match(/SUMMARY[:：]?\s*([\s\S]*?)(?=DETAIL|$)/i);
-    const dm = raw.match(/DETAIL[:：]?\s*([\s\S]*)/i);
+    const sm = raw.match(/SUMMARY[:：]?\s*([\s\S]*?)(?=DETAIL|NEXT|$)/i);
+    const dm = raw.match(/DETAIL[:：]?\s*([\s\S]*?)(?=NEXT|$)/i);
+    const nm = raw.match(/NEXT[:：]?\s*([\s\S]*)/i);
     const summary = cleanLine((sm ? sm[1] : (raw.split("\n")[0] || "")).trim());
     const detailRaw = (dm ? dm[1] : "").trim();
     const points = detailRaw.split("\n").map(cleanLine).filter((l) => l.length > 1).map((l) => {
@@ -888,7 +890,8 @@ ${JSON.stringify(summary, null, 2)}`
         ? { title: parts[0].trim(), body: parts.slice(1).join("").trim() }
         : { title: "", body: l };
     });
-    return { summary, points };
+    const next = (nm ? nm[1] : "").trim().split("\n").map(cleanLine).filter(Boolean).join(" ");
+    return { summary, points, next };
   };
 
   // Monthly report: summary + insight cards + a hint for next month.
@@ -1332,7 +1335,7 @@ ${toneInstruction()}
           {aiAnalysis && (
             <>
               {(() => {
-                const { summary, points } = parseAnalysis(aiAnalysis);
+                const { summary, points, next } = parseAnalysis(aiAnalysis);
                 return (
                   <>
                     <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: "#fff", border: "1.5px solid #d6ccf5", borderRadius: 14, padding: "13px 15px", marginBottom: points.length ? 10 : 0 }}>
@@ -1352,6 +1355,15 @@ ${toneInstruction()}
                             </div>
                           ))}
                         </div>
+                        {next && (
+                          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#eaf6ea", border: "1.5px solid #bfe3bf", borderRadius: 12, padding: "11px 13px", marginBottom: 10 }}>
+                            <span style={{ fontSize: 16 }}>🌱</span>
+                            <div>
+                              <p style={{ fontSize: 11, fontWeight: 700, color: "#3a8a4a", margin: "0 0 3px" }}>次の一手</p>
+                              <p style={{ fontSize: 13, color: "#3a6a3a", lineHeight: 1.7, margin: 0 }}>{next}</p>
+                            </div>
+                          </div>
+                        )}
                         <button onClick={() => setShowFullAnalysis(false)} style={{ fontSize: 12, color: "#9a80d0", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>閉じる ▲</button>
                       </>
                     )}
