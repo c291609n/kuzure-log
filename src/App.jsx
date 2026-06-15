@@ -1269,6 +1269,52 @@ ${toneInstruction()}
     setAiHintLoading(false);
   };
 
+  // 今日の崩れ予報 (record tab): risk from today's sleep/fatigue + weekday + recent.
+  const renderForecast = () => {
+    if (sleep == null || fatigue == null) return null;
+    const total = logs.length;
+    const kdays = logs.filter((l) => l.kuzure);
+    const card = (icon, color, title, body) => (
+      <div style={{ background: "#fff", border: `1.5px solid ${color}44`, borderRadius: 16, padding: "14px 16px", marginBottom: 4 }}>
+        <p style={{ fontSize: 11, fontWeight: 800, color, letterSpacing: "0.04em", margin: "0 0 6px" }}>{icon} 今日の崩れ予報{title ? `　リスク：${title}` : ""}</p>
+        <p style={{ fontSize: 13.5, color: "#4a4030", lineHeight: 1.7, margin: 0, fontWeight: 600 }}>{body}</p>
+      </div>
+    );
+    if (total < 5 || kdays.length < 2) {
+      return card("🔮", "#a0a0b0", "", "もう少し記録がたまると、今日の崩れ予報ができるようになるよ");
+    }
+    const sleepRisk = (100 - sleep) / 100;
+    const fatigueRisk = (100 - fatigue) / 100;
+    let score = sleepRisk * 0.5 + fatigueRisk * 0.5;
+    const overallRate = kdays.length / total;
+    const dow = new Date().getDay();
+    const sameDow = logs.filter((l) => { const [y, m, d] = dayKey(l.date).split("/").map(Number); return new Date(y, m - 1, d).getDay() === dow; });
+    if (sameDow.length >= 3) {
+      const r = sameDow.filter((l) => l.kuzure).length / sameDow.length;
+      if (r > overallRate + 0.15) score += 0.15;
+    }
+    if (logs.slice(0, 2).filter((l) => l.kuzure).length >= 2) score += 0.12;
+    score = Math.min(1, Math.max(0, score));
+    const level = score >= 0.6 ? "高" : score >= 0.35 ? "中" : "低";
+    const icon = level === "高" ? "🌧" : level === "中" ? "⛅" : "☀️";
+    const color = level === "高" ? "#c0503a" : level === "中" ? "#c08a30" : "#3a8a4a";
+    const topOf = (key) => { const c = {}; kdays.forEach((l) => (l[key] || []).forEach((x) => { c[x] = (c[x] || 0) + 1; })); return Object.keys(c).sort((a, b) => c[b] - c[a])[0]; };
+    const topMotive = topOf("motives"), topAction = topOf("actions");
+    const rStats = {};
+    logs.forEach((l) => (l.recovery || []).forEach((r) => { (rStats[r] = rStats[r] || { no: 0 }); if (!l.kuzure) rStats[r].no++; }));
+    let bestAction = null, bn = 0;
+    Object.entries(rStats).forEach(([r, s]) => { if (s.no > bn) { bn = s.no; bestAction = r; } });
+    let body;
+    if (level === "高") {
+      body = `崩れやすい日かも。${topMotive && topAction ? `特に「${topMotive}」からの「${topAction}」に注意。` : ""}${bestAction ? `早めに「${bestAction}」で切り替えると◎` : "無理せずゆっくりいこ"}`;
+    } else if (level === "中") {
+      body = `少し注意の日。${bestAction ? `「${bestAction}」を意識しておくと安心。` : "こまめに休もう。"}`;
+    } else {
+      body = "今日は崩れにくそう。いい調子でいこう！";
+    }
+    return card(icon, color, level, body);
+  };
+
   const renderHint = () => {
     if (!logs.length) return null;
     const recentK = logs.slice(0, 3).filter((l) => l.kuzure).length;
@@ -1742,6 +1788,9 @@ ${toneInstruction()}
             <div style={S.secHead}><div style={S.secBar("#c04820")}/><span style={S.secLabel}>今の体の疲労感<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
             <Slider value={fatigue} min={0} max={100} color="#c04820" onChange={setFatigue} leftLabel="限界" rightLabel="元気" />
           </div>
+
+          {/* 今日の崩れ予報（睡眠・疲労を入れたら出る） */}
+          {renderForecast()}
 
           {/* イベント */}
           <div style={S.secWrap}>
