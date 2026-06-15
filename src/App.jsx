@@ -263,15 +263,16 @@ export default function App() {
   const [browserOnly, setBrowserOnly] = useState(false);
 
   useEffect(() => {
+    loadLocalSettings(); // logged-out + fallback
     // Check auth state
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setAuthLoading(false);
-      if (session?.user) loadUserData(session.user.id);
+      if (session?.user) { applySettings(session.user.user_metadata?.settings); loadUserData(session.user.id); }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) loadUserData(session.user.id);
+      if (session?.user) { applySettings(session.user.user_metadata?.settings); loadUserData(session.user.id); }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -301,28 +302,57 @@ export default function App() {
         setLogs(mapped);
         if (mapped.length > 0 && mapped[0].date === todayStr()) setAlreadyLogged(true);
       }
-      // Load settings from localStorage
-      try {
-        const orderRaw = localStorage.getItem(RECOVERY_ORDER_KEY);
-        if (orderRaw) setRecoveryItems(JSON.parse(orderRaw));
-        const evOrderRaw = localStorage.getItem(EVENTS_ORDER_KEY);
-        if (evOrderRaw) setEventItems(JSON.parse(evOrderRaw));
-        const actOrderRaw = localStorage.getItem(ACTIONS_ORDER_KEY);
-        if (actOrderRaw) setActionItems(JSON.parse(actOrderRaw));
-        const motOrderRaw = localStorage.getItem(MOTIVES_ORDER_KEY);
-        if (motOrderRaw) setMotiveItems(JSON.parse(motOrderRaw));
-        const savedType = localStorage.getItem("kuzure_recovery_type");
-        if (savedType && RECOVERY_TYPES[savedType]) setRecoveryTypeFull(RECOVERY_TYPES[savedType]);
-        const savedTypeDate = localStorage.getItem("kuzure_recovery_type_date");
-        if (savedTypeDate) setDiagnosedAt(savedTypeDate);
-        const periodRaw = localStorage.getItem(PERIOD_KEY);
-        if (periodRaw) {
-          const pd = JSON.parse(periodRaw);
-          setTrackPeriod(pd.track || false);
-          setPeriodDates(pd.dates || []);
-        }
-      } catch {}
     } catch (e) { console.error(e); }
+  };
+
+  // Load settings from localStorage (logged-out, and as fallback before DB settings arrive).
+  const loadLocalSettings = () => {
+    try {
+      const orderRaw = localStorage.getItem(RECOVERY_ORDER_KEY);
+      if (orderRaw) setRecoveryItems(JSON.parse(orderRaw));
+      const evOrderRaw = localStorage.getItem(EVENTS_ORDER_KEY);
+      if (evOrderRaw) setEventItems(JSON.parse(evOrderRaw));
+      const actOrderRaw = localStorage.getItem(ACTIONS_ORDER_KEY);
+      if (actOrderRaw) setActionItems(JSON.parse(actOrderRaw));
+      const motOrderRaw = localStorage.getItem(MOTIVES_ORDER_KEY);
+      if (motOrderRaw) setMotiveItems(JSON.parse(motOrderRaw));
+      const savedType = localStorage.getItem("kuzure_recovery_type");
+      if (savedType && RECOVERY_TYPES[savedType]) setRecoveryTypeFull(RECOVERY_TYPES[savedType]);
+      const savedTypeDate = localStorage.getItem("kuzure_recovery_type_date");
+      if (savedTypeDate) setDiagnosedAt(savedTypeDate);
+      const periodRaw = localStorage.getItem(PERIOD_KEY);
+      if (periodRaw) {
+        const pd = JSON.parse(periodRaw);
+        setTrackPeriod(pd.track || false);
+        setPeriodDates(pd.dates || []);
+      }
+    } catch {}
+  };
+
+  // Build the settings object that gets synced to the account (DB).
+  const buildSettings = () => ({
+    recoveryItems, eventItems, actionItems, motiveItems,
+    periodTrack: trackPeriod, periodDates,
+    recoveryType: recoveryTypeFull ? Object.keys(RECOVERY_TYPES).find((k) => RECOVERY_TYPES[k] === recoveryTypeFull) || null : null,
+    diagnosedAt: diagnosedAt || null,
+    sectionOrder,
+  });
+
+  // Apply settings loaded from the account, overriding local defaults.
+  const applySettings = (s) => {
+    if (!s) return;
+    if (Array.isArray(s.recoveryItems)) setRecoveryItems(s.recoveryItems);
+    if (Array.isArray(s.eventItems)) setEventItems(s.eventItems);
+    if (Array.isArray(s.actionItems)) setActionItems(s.actionItems);
+    if (Array.isArray(s.motiveItems)) setMotiveItems(s.motiveItems);
+    if (typeof s.periodTrack === "boolean") setTrackPeriod(s.periodTrack);
+    if (Array.isArray(s.periodDates)) setPeriodDates(s.periodDates);
+    if (s.recoveryType && RECOVERY_TYPES[s.recoveryType]) setRecoveryTypeFull(RECOVERY_TYPES[s.recoveryType]);
+    if (s.diagnosedAt) setDiagnosedAt(s.diagnosedAt);
+    if (Array.isArray(s.sectionOrder)) {
+      const merged = [...s.sectionOrder.filter((k) => SECTION_DEFAULT_ORDER.includes(k)), ...SECTION_DEFAULT_ORDER.filter((k) => !s.sectionOrder.includes(k))];
+      setSectionOrder(merged);
+    }
   };
 
   useEffect(() => {
@@ -683,6 +713,17 @@ ${JSON.stringify(summary, null, 2)}`
   const [recoveryTypeFull, setRecoveryTypeFull] = useState(null);
   const [diagnosedAt, setDiagnosedAt] = useState(null);
   const [typeLoading, setTypeLoading] = useState(false);
+
+  // Sync settings to the account (debounced) so they follow the user across devices.
+  // Placed here (after all referenced state is declared) to avoid a TDZ in the dependency array.
+  useEffect(() => {
+    if (!user) return;
+    const next = buildSettings();
+    const current = user.user_metadata?.settings || null;
+    if (JSON.stringify(next) === JSON.stringify(current)) return;
+    const t = setTimeout(() => { supabase.auth.updateUser({ data: { settings: next } }); }, 1500);
+    return () => clearTimeout(t);
+  }, [user, recoveryItems, eventItems, actionItems, motiveItems, trackPeriod, periodDates, recoveryTypeFull, diagnosedAt, sectionOrder]);
   const [showAllTypes, setShowAllTypes] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [selectedType, setSelectedType] = useState(null);
