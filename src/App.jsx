@@ -10,6 +10,7 @@ const EVENTS_ORDER_KEY = "kuzure_events_order";
 
 const SLEEP_LABELS = ["", "最悪", "悪い", "まあまあ", "良い", "ぐっすり"];
 const FATIGUE_LABELS = ["", "限界", "やや疲れ", "ふつう", "やや元気", "元気"];
+const KUZURE_LABELS = ["崩れてない", "ほんの少し", "少し", "そこそこ", "しっかり", "がっつり"];
 const EVENTS_DEFAULT = ["バイト", "授業", "友達", "勉強", "運動", "特になし"];
 const ACTIONS_DEFAULT = ["爆食い", "スマホ延々", "そのまま寝落ち"];
 const MOTIVES_DEFAULT = ["だるい", "そわそわ", "しんどい", "何もしたくない", "めんどくさい", "わかんない"];
@@ -227,6 +228,27 @@ function TypeCard({ code, t, onSelect }) {
   );
 }
 
+// Smooth slider with a live value display (used for sleep / fatigue / kuzure degree).
+function Slider({ value, min, max, color, onChange, children }) {
+  const v = value == null ? (min + max) / 2 : value;
+  const pct = ((v - min) / (max - min)) * 100;
+  const dim = value == null;
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "16px 18px" }}>
+      <div style={{ textAlign: "center", minHeight: 40, marginBottom: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        {value == null
+          ? <span style={{ fontSize: 13, color: "#c0b8a8" }}>スライドして選んでね</span>
+          : children}
+      </div>
+      <input
+        type="range" className="kz-slider" min={min} max={max} step={1} value={v}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        style={{ color, background: dim ? "#e4e0d8" : `linear-gradient(to right, ${color} ${pct}%, #e4e0d8 ${pct}%)` }}
+      />
+    </div>
+  );
+}
+
 // ── main ────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState("record");
@@ -234,7 +256,7 @@ export default function App() {
   const [sleep, setSleep] = useState(null);
   const [fatigue, setFatigue] = useState(null);
   const [events, setEvents] = useState([]);
-  const [kuzure, setKuzure] = useState(null);
+  const [kuzureLevel, setKuzureLevel] = useState(null);
   const [actions, setActions] = useState([]);
   const [motives, setMotives] = useState([]);
   const [memo, setMemo] = useState("");
@@ -303,6 +325,7 @@ export default function App() {
         const mapped = logsData.map(l => ({
           date: l.date, sleep: l.sleep, fatigue: l.fatigue,
           events: l.events || [], kuzure: l.kuzure,
+          kuzureLevel: l.kuzure_level != null ? l.kuzure_level : (l.kuzure ? 3 : 0),
           actions: l.actions || [], motives: l.motives || [],
           memo: l.memo || "", recovery: l.recovery || [],
           isPeriod: l.is_period, eventMemo: l.event_memo || "",
@@ -414,7 +437,7 @@ export default function App() {
     setSleep(entry.sleep);
     setFatigue(entry.fatigue);
     setEvents(entry.events || []);
-    setKuzure(entry.kuzure);
+    setKuzureLevel(entry.kuzureLevel != null ? entry.kuzureLevel : (entry.kuzure ? 3 : 0));
     setActions(entry.actions || []);
     setMotives(entry.motives || []);
     setMemo(entry.memo || "");
@@ -440,16 +463,17 @@ export default function App() {
   const toggleMulti = (arr, setArr, val) => setArr((p) => p.includes(val) ? p.filter((v) => v !== val) : [...p, val]);
 
   const handleSave = async () => {
-    if (!sleep || !fatigue || events.length === 0 || kuzure === null) { alert("全項目を選んでください"); return; }
+    if (!sleep || !fatigue || events.length === 0 || kuzureLevel === null) { alert("全項目を選んでください"); return; }
+    const kuzure = kuzureLevel > 0;
     const dateToSave = selectedDate || todayStr();
-    const entry = { date: dateToSave, sleep, fatigue, events, kuzure, actions, motives, memo, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
+    const entry = { date: dateToSave, sleep, fatigue, events, kuzure, kuzureLevel, actions, motives, memo, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
     if (trackPeriod && isPeriod) setPeriodDates((p) => p.includes(dateToSave) ? p : [...p, dateToSave]);
-    
+
     // Save to Supabase if logged in
     if (user) {
       const dbEntry = {
         user_id: user.id, date: dateToSave, sleep, fatigue,
-        events, kuzure, actions, motives, memo,
+        events, kuzure, kuzure_level: kuzureLevel, actions, motives, memo,
         recovery, is_period: trackPeriod ? isPeriod : null, event_memo: eventMemo,
       };
       const existingLog = logs.find(l => l.date === dateToSave);
@@ -467,7 +491,7 @@ export default function App() {
       newLogs.sort((a, b) => new Date(b.date.replace(/\//g,"-")) - new Date(a.date.replace(/\//g,"-")));
       saveLogs(newLogs);
     }
-    setSleep(null); setFatigue(null); setEvents([]); setKuzure(null);
+    setSleep(null); setFatigue(null); setEvents([]); setKuzureLevel(null);
     setActions([]); setMotives([]); setMemo(""); setRecovery([]); setIsPeriod(false); setEventMemo("");
     if (dateToSave === todayStr()) setAlreadyLogged(true);
     setEditingLog(null);
@@ -1679,7 +1703,7 @@ ${toneInstruction()}
           {editingLog && (
             <div style={{ background: "#fff4e6", border: "1.5px solid #f5c4a8", borderRadius: 14, padding: "10px 16px", marginBottom: 12, fontSize: 13, color: "#b85c00", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span>✏️ {editingLog.date} の記録を編集中</span>
-              <button onClick={() => { setEditingLog(null); setSleep(null); setFatigue(null); setEvents([]); setKuzure(null); setActions([]); setMotives([]); setMemo(""); setEventMemo(""); setRecovery([]); setSelectedDate(""); }} style={{ fontSize: 12, color: "#b85c00", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>キャンセル</button>
+              <button onClick={() => { setEditingLog(null); setSleep(null); setFatigue(null); setEvents([]); setKuzureLevel(null); setActions([]); setMotives([]); setMemo(""); setEventMemo(""); setRecovery([]); setSelectedDate(""); }} style={{ fontSize: 12, color: "#b85c00", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>キャンセル</button>
             </div>
           )}
           {alreadyLogged && !saved && !editingLog && <div style={S.alreadyBox}>今日はもう記録済みです。別の日の分を記録することもできます。</div>}
@@ -1704,27 +1728,19 @@ ${toneInstruction()}
           {/* 睡眠 */}
           <div style={S.secWrap}>
             <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>昨夜（{prevDay(selectedDate || todayStr())}の夜）の睡眠満足度<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
-            <div style={S.faceGrid}>
-              {[1,2,3,4,5].map((v) => (
-                <button key={v} onClick={() => setSleep(v)} style={S.faceBtn(sleep===v, "#5a35c8")}>
-                  <SleepFace level={v} color={sleep===v ? "#5a35c8" : "#ccc"} />
-                  <span style={S.faceLbl(sleep===v, "#5a35c8")}>{SLEEP_LABELS[v]}</span>
-                </button>
-              ))}
-            </div>
+            <Slider value={sleep} min={1} max={5} color="#5a35c8" onChange={setSleep}>
+              <SleepFace level={sleep} color="#5a35c8" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#5a35c8", marginTop: 2 }}>{SLEEP_LABELS[sleep]}</span>
+            </Slider>
           </div>
 
           {/* 疲労 */}
           <div style={S.secWrap}>
             <div style={S.secHead}><div style={S.secBar("#c04820")}/><span style={S.secLabel}>今の体の疲労感<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
-            <div style={S.faceGrid}>
-              {[1,2,3,4,5].map((v) => (
-                <button key={v} onClick={() => setFatigue(v)} style={S.faceBtn(fatigue===v, "#c04820")}>
-                  <FatigueFace level={v} color={fatigue===v ? "#c04820" : "#ccc"} />
-                  <span style={S.faceLbl(fatigue===v, "#c04820")}>{FATIGUE_LABELS[v]}</span>
-                </button>
-              ))}
-            </div>
+            <Slider value={fatigue} min={1} max={5} color="#c04820" onChange={setFatigue}>
+              <FatigueFace level={fatigue} color="#c04820" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#c04820", marginTop: 2 }}>{FATIGUE_LABELS[fatigue]}</span>
+            </Slider>
           </div>
 
           {/* イベント */}
@@ -1750,13 +1766,12 @@ ${toneInstruction()}
 
           {/* 崩れ */}
           <div style={S.secWrap}>
-            <div style={S.secHead}><div style={S.secBar("#c02020")}/><span style={S.secLabel}>昨日、崩れた？<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
-            <div style={S.ynGrid}>
-              <button onClick={() => setKuzure(true)} style={S.ynBtn(kuzure===true, "#c02020")}>した</button>
-              <button onClick={() => setKuzure(false)} style={S.ynBtn(kuzure===false, "#5a35c8")}>してない</button>
-            </div>
-            {/* Preview of actions when nothing selected */}
-            {kuzure !== true && (
+            <div style={S.secHead}><div style={S.secBar("#c02020")}/><span style={S.secLabel}>昨日、どのくらい崩れた？<span style={{color:"#c02020",marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>必須</span></span></div>
+            <Slider value={kuzureLevel} min={0} max={5} color="#c02020" onChange={setKuzureLevel}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: kuzureLevel === 0 ? "#5a35c8" : "#c02020" }}>{KUZURE_LABELS[kuzureLevel]}</span>
+            </Slider>
+            {/* Preview of actions when not 崩れ */}
+            {(kuzureLevel === 0 || kuzureLevel === null) && (
               <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {ACTIONS_DEFAULT.map((a) => (
                   <span key={a} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 10, background: "#ebebeb", color: "#888", border: "1px solid #ddd" }}>{a}</span>
@@ -1764,7 +1779,7 @@ ${toneInstruction()}
               </div>
             )}
 
-            {kuzure === true && (
+            {kuzureLevel > 0 && (
               <div style={{ marginTop: 16 }}>
                 <p style={{ ...S.secLabel, marginBottom: 6 }}>何をした？（複数OK）</p>
                 <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 10px" }}>ドラッグで並び替え、×で削除できます</p>
