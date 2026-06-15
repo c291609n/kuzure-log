@@ -600,6 +600,7 @@ export default function App() {
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
   const [reorderMode, setReorderMode] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState(null);
+  const [showHintWhy, setShowHintWhy] = useState(false);
   const [sectionOrder, setSectionOrder] = useState(SECTION_DEFAULT_ORDER);
   const dragSec = useRef(null);
   const [dragSecOver, setDragSecOver] = useState(null);
@@ -1189,6 +1190,50 @@ ${JSON.stringify(data, null, 2)}`
       <span style={{ fontSize: 11, color: "#9a8fc0", textDecoration: "underline" }}>ログイン</span>
     </div>
   );
+
+  // "今日のひとこと": state + best recovery action from the user's own data, phrased by tone.
+  const hintText = (state, action) => {
+    const t = TONES[tone] ? tone : "normal";
+    if (state === "fewdata") {
+      return { gentle: "「試したこと」も記録すると、あなたに効くケアを提案できるよ", normal: "「試したこと」の記録が増えると、データに基づいた提案ができるようになります", straight: "「試したこと」を記録して。提案はそれから。", cheer: "いいスタート！「試したこと」も記録すれば、ピッタリの提案ができるよ🌱" }[t];
+    }
+    if (state === "good") {
+      return { gentle: `いい調子！「${action}」みたいな自分に合うこと、この調子で続けてこ`, normal: `直近は崩れが見られません。「${action}」など効果的な習慣を継続できています`, straight: `崩れなし。「${action}」継続でOK。`, cheer: `絶好調！「${action}」が効いてるね、その調子！` }[t];
+    }
+    const head = state === "rough"
+      ? { gentle: "最近ちょっとお疲れ気味かも。", normal: "直近で崩れが続いています。", straight: "最近崩れ気味。", cheer: "最近ちょっとお疲れ？でも大丈夫、" }[t]
+      : { gentle: "ちょっと崩れた日があったね。", normal: "直近で崩れが見られます。", straight: "崩れあり。", cheer: "崩れた日もあったけど、" }[t];
+    const tail = { gentle: `立て直すなら「${action}」が効いてるみたい。無理せずいこ`, normal: `「${action}」をした日は崩れにくい傾向です`, straight: `「${action}」が効く。やろう。`, cheer: `「${action}」でいつも立て直せてるよ、やってみよ！` }[t];
+    return head + tail;
+  };
+
+  const renderHint = () => {
+    if (!logs.length) return null;
+    const recentK = logs.slice(0, 3).filter((l) => l.kuzure).length;
+    const rStats = {};
+    logs.forEach((l) => (l.recovery || []).forEach((r) => { (rStats[r] = rStats[r] || { no: 0, tot: 0 }); rStats[r].tot++; if (!l.kuzure) rStats[r].no++; }));
+    let action = null, best = null;
+    Object.entries(rStats).forEach(([r, s]) => { if (s.no >= 1 && s.no > (best?.no || 0)) { best = s; action = r; } });
+    let state;
+    if (logs.length < 3 || !action) state = "fewdata";
+    else if (recentK >= 2) state = "rough";
+    else if (recentK === 1) state = "mild";
+    else state = "good";
+    const msg = hintText(state, action);
+    const reason = action ? `「${action}」をした${best.tot}日のうち${best.no}日は崩れずに済んでいます${recoveryTypeFull ? `。回復タイプ「${recoveryTypeFull.name}」のあなたにも合っています` : ""}` : "";
+    return (
+      <div style={{ background: "linear-gradient(135deg,#fffaf0,#fff3e0)", border: "1.5px solid #f3d9a8", borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+        <p style={{ fontSize: 11, fontWeight: 800, color: "#c08a30", letterSpacing: "0.04em", margin: "0 0 8px" }}>💬 今日のひとこと</p>
+        <p style={{ fontSize: 14, color: "#5a4a2a", lineHeight: 1.7, margin: 0, fontWeight: 600 }}>{msg}</p>
+        {reason && (
+          <>
+            <button onClick={() => setShowHintWhy((v) => !v)} style={{ fontSize: 11, color: "#c0a060", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0, marginTop: 8 }}>{showHintWhy ? "とじる ▲" : "なんで？ ▼"}</button>
+            {showHintWhy && <p style={{ fontSize: 12, color: "#8a7a5a", lineHeight: 1.7, margin: "6px 0 0" }}>{reason}</p>}
+          </>
+        )}
+      </div>
+    );
+  };
 
   // Renders one dashboard section by key (used by the reorderable history tab).
   const renderSection = (key) => {
@@ -1925,6 +1970,7 @@ ${JSON.stringify(data, null, 2)}`
             <p style={{ textAlign: "center", color: "#aaa", fontSize: 14, paddingTop: 40 }}>まだ記録がありません</p>
           ) : (
             <>
+              {!reorderMode && renderHint()}
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
                 <button onClick={() => setReorderMode((v) => !v)} style={{ fontSize: 12, color: reorderMode ? "#fff" : "#888", background: reorderMode ? "#5a35c8" : "#fff", border: "1.5px solid #e4e0d8", borderRadius: 99, padding: "5px 14px", cursor: "pointer", fontWeight: 600 }}>{reorderMode ? "完了 ✓" : "並び替え ⇅"}</button>
               </div>
