@@ -1263,12 +1263,12 @@ ${toneInstruction()}
             {showHintWhy && <p style={{ fontSize: 12, color: "#8a7a5a", lineHeight: 1.7, margin: "6px 0 0" }}>{reason}</p>}
           </>
         )}
-        {user && action && (
+        {user && action && !aiActive && (
           <div style={{ marginTop: 10 }}>
             {aiHintLoading ? (
               <span style={{ fontSize: 12, color: "#c0a060" }}>考え中...</span>
             ) : (
-              <button onClick={() => runDailyHint(state, action, reason)} style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: "#d9a441", border: "none", borderRadius: 99, padding: "6px 14px", cursor: "pointer" }}>{aiActive ? "別の言い方にする ↻" : "AIに書いてもらう ✨"}</button>
+              <button onClick={() => runDailyHint(state, action, reason)} style={{ fontSize: 12, fontWeight: 600, color: "#fff", background: "#d9a441", border: "none", borderRadius: 99, padding: "6px 14px", cursor: "pointer" }}>AIに書いてもらう ✨</button>
             )}
           </div>
         )}
@@ -1993,7 +1993,7 @@ ${toneInstruction()}
                 {Object.entries(TONES).map(([key, t]) => {
                   const active = tone === key;
                   return (
-                    <button key={key} onClick={() => setTone(key)} style={{ padding: "10px 8px", border: active ? "1.5px solid #5a35c8" : "1.5px solid #e4e0d8", borderRadius: 12, background: active ? "#5a35c815" : "#fff", cursor: "pointer", textAlign: "left" }}>
+                    <button key={key} onClick={() => { setTone(key); setAiHint(null); try { localStorage.removeItem("kuzure_ai_hint"); } catch {} }} style={{ padding: "10px 8px", border: active ? "1.5px solid #5a35c8" : "1.5px solid #e4e0d8", borderRadius: 12, background: active ? "#5a35c815" : "#fff", cursor: "pointer", textAlign: "left" }}>
                       <p style={{ fontSize: 13, fontWeight: active ? 700 : 600, color: active ? "#5a35c8" : "#1a1a1a", margin: "0 0 2px" }}>{t.label}</p>
                       <p style={{ fontSize: 10, color: "#aaa", margin: 0 }}>{t.desc}</p>
                     </button>
