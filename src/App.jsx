@@ -1752,6 +1752,32 @@ ${toneInstruction()}
     }
   };
 
+  // Download all logs as a JSON file the user keeps.
+  const handleExport = () => {
+    if (!logs.length) { alert("書き出すデータがありません"); return; }
+    try {
+      const blob = new Blob([JSON.stringify(logs, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `kuzure-log-${todayStr().replace(/\//g, "-")}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert("書き出しに失敗しました"); }
+  };
+
+  // Delete every log (cloud + local).
+  const handleDeleteAll = async () => {
+    try {
+      if (user) await supabase.from("logs").delete().eq("user_id", user.id);
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      setLogs([]); setAlreadyLogged(false); setConfirmDelete(null);
+      alert("すべての記録を削除しました");
+    } catch (e) {
+      alert("削除に失敗しました");
+    }
+  };
+
   // Auth handlers
   const handleReset = async () => {
     setAuthError("");
@@ -2158,6 +2184,16 @@ ${toneInstruction()}
                   );
                 })}
               </div>
+            </div>
+          </div>
+          <div style={S.secWrap}>
+            <div style={S.secHead}><div style={S.secBar("#1a6030")}/><span style={S.secLabel}>データとプライバシー</span></div>
+            <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 14, padding: "14px 16px" }}>
+              <p style={{ fontSize: 12, color: "#888", margin: "0 0 14px", lineHeight: 1.7 }}>
+                記録はあなたのアカウントに保存され、<b style={{ color: "#1a1a1a" }}>他のユーザーには見えません</b>。AI分析・予報を使うときだけ、その時の記録の要約がAI（Anthropic）に送られます。
+              </p>
+              <button onClick={handleExport} style={{ width: "100%", padding: "11px", fontSize: 13, fontWeight: 600, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a6030", cursor: "pointer", marginBottom: 8 }}>データを書き出す（バックアップ）</button>
+              <button onClick={() => setConfirmDelete({ label: "すべての記録", onConfirm: handleDeleteAll })} style={{ width: "100%", padding: "11px", fontSize: 13, fontWeight: 600, border: "1.5px solid #ffd0d0", borderRadius: 12, background: "#fff", color: "#c02020", cursor: "pointer" }}>すべての記録を削除する</button>
             </div>
           </div>
         </div>
