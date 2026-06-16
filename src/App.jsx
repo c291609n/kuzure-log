@@ -737,6 +737,22 @@ export default function App() {
     });
   };
 
+  // How rich the user's writing is — drives the "分析の詳しさ" meter (more memos = deeper analysis).
+  const computeRichness = () => {
+    if (!logs.length) return { score: 0, dots: 0, msg: "" };
+    const withMemo = logs.filter((l) => (l.memo && l.memo.trim()) || (l.eventMemo && l.eventMemo.trim()));
+    const coverage = withMemo.length / logs.length;
+    const avgChars = logs.reduce((s, l) => s + ((l.memo || "").length + (l.eventMemo || "").length), 0) / logs.length;
+    const score = Math.min(1, coverage * 0.6 + Math.min(1, avgChars / 40) * 0.4);
+    const dots = Math.max(0, Math.min(5, Math.round(score * 5)));
+    const msg = score < 0.35
+      ? "メモがまだ少なめ。出来事や気持ちを書き足すほど、AI分析が具体的になります"
+      : score < 0.7
+        ? "いい感じ。もう少し書くと、さらに深い分析になります"
+        : "しっかり書けてる！具体的で深い分析が出せます";
+    return { score, dots, msg };
+  };
+
   const runAiAnalysis = async () => {
     if (logs.length < 3) return;
     setAiLoading(true);
@@ -755,6 +771,8 @@ export default function App() {
 
 書き方のルール：
 - 具体的な日付やイベントを根拠として挙げ、データに基づいて述べること
+- 自由記述の「メモ」「イベントメモ」に書かれた言葉を最重視し、その人ならではの具体的な気づきを拾うこと
+- メモがほとんど無い・手がかりが乏しい場合は、当たり前の一般論を並べず、「まだ手がかりが少ない」と正直に伝え、どんなことをメモに書くともっと深く分析できるかを具体的に一言添えること
 - 崩れた日と崩れなかった日の違いに注目
 - 疲労感は「元気→やや元気→ふつう→やや疲れ→限界」の順で悪化、睡眠満足度は「最悪→悪い→まあまあ→良い→ぐっすり」の順で良くなる
 - 記号（アスタリスク*、シャープ#、中黒・、番号）は一切使わないこと。装飾なしの普通の文章で
@@ -1442,6 +1460,22 @@ ${toneInstruction()}
       return (
         <div style={{ ...S.patternBox, marginTop: 0, marginBottom: 12 }}>
           <div style={{ ...S.secHead, marginBottom: 10 }}><div style={S.secBar("#5a35c8")}/><span style={{ ...S.secLabel, color: "#5a35c8" }}>パターン分析</span></div>
+          {logs.length >= 3 && (() => {
+            const r = computeRichness();
+            return (
+              <div style={{ background: "#fff", border: "1px solid #ece6f8", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#7a5fd0" }}>分析の詳しさ</span>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i < r.dots ? "#5a35c8" : "#e4dff5" }} />
+                    ))}
+                  </div>
+                </div>
+                <p style={{ fontSize: 11, color: "#9a8fc0", margin: 0, lineHeight: 1.6 }}>{r.msg}</p>
+              </div>
+            );
+          })()}
           {!aiAnalysis && !aiLoading && logs.length >= 3 && (
             <button onClick={runAiAnalysis} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 600, border: "none", borderRadius: 12, background: "#5a35c8", color: "#fff", cursor: "pointer" }}>AIで分析する</button>
           )}
@@ -1854,7 +1888,7 @@ ${toneInstruction()}
               onDelete={deleteEvent}
               activeColor="#1a7ac0"
             />
-            <textarea value={eventMemo} onChange={(e) => setEventMemo(e.target.value)} placeholder="一言メモ（任意）" rows={2} style={{ ...S.textarea, marginTop: 10 }} />
+            <textarea value={eventMemo} onChange={(e) => setEventMemo(e.target.value)} placeholder="その日の出来事や感じたこと（任意・詳しく書くほどAI分析が深まります）" rows={2} style={{ ...S.textarea, marginTop: 10 }} />
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <input value={newEventInput} onChange={(e) => setNewEventInput(e.target.value)} onKeyDown={(e) => { if (e.key==="Enter") addEvent(); }} placeholder="追加する（Enterで確定）" style={{ flex: 1, padding: "10px 12px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#faf9f7", color: "#1a1a1a", outline: "none" }} />
               <button onClick={addEvent} style={{ padding: "10px 14px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>追加</button>
@@ -1893,7 +1927,7 @@ ${toneInstruction()}
                   <button onClick={addMotive} style={{ padding: "10px 14px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>追加</button>
                 </div>
                 <p style={{ ...S.secLabel, marginBottom: 6 }}>一言メモ（任意）</p>
-                <textarea value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="どんな感じだったか、自由に" rows={2} style={S.textarea} />
+                <textarea value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="どんな状況・きっかけ・気持ちだったか、自由に（詳しく書くほどAI分析が深まります）" rows={2} style={S.textarea} />
               </div>
             )}
           </div>
