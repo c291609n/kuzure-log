@@ -326,6 +326,7 @@ export default function App() {
   const [signupDone, setSignupDone] = useState(false);
   const [browserOnly, setBrowserOnly] = useState(false);
   const [tone, setTone] = useState("normal");
+  const [agreedTerms, setAgreedTerms] = useState(false);
 
   useEffect(() => {
     loadLocalSettings(); // logged-out + fallback
@@ -1802,6 +1803,7 @@ ${toneInstruction()}
   const handleAuth = async () => {
     setAuthError("");
     if (authMode === "signup") {
+      if (!agreedTerms) { setAuthError("利用上の注意に同意してください"); return; }
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) { setAuthError(error.message); return; }
       if (data.session) {
@@ -2266,9 +2268,22 @@ ${toneInstruction()}
                 <input type="password" placeholder="パスワード（6文字以上）" value={password} onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
                   style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", fontSize: 14, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#1a1a1a", outline: "none", marginBottom: 10 }} />
+                {authMode === "signup" && (
+                  <div style={{ background: "#faf9f7", border: "1.5px solid #ebe7df", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "#888", margin: "0 0 6px" }}>ご利用の前に</p>
+                    <p style={{ fontSize: 11, color: "#888", lineHeight: 1.7, margin: 0 }}>
+                      ・このアプリは医療や診断ではありません。AIの分析・予報は参考情報です。つらい状態が続くときは専門家にご相談ください。<br />
+                      ・記録はあなたのアカウントに保存され、他のユーザーには見えません。AI機能を使うと、その時だけ記録の要約がAI（Anthropic）に送信されます。
+                    </p>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: "pointer" }}>
+                      <input type="checkbox" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#5a35c8" }} />
+                      <span style={{ fontSize: 12, color: "#1a1a1a", fontWeight: 600 }}>上記に同意します</span>
+                    </label>
+                  </div>
+                )}
                 {authError && <p style={{ fontSize: 12, color: "#c02020", margin: "0 0 10px" }}>{authError}</p>}
-                <button onClick={handleAuth} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: "#1a1a1a", color: "#fff", cursor: "pointer", marginBottom: 8 }}>
-                  {authMode === "login" ? "ログイン" : "アカウントを作成"}
+                <button onClick={handleAuth} disabled={authMode === "signup" && !agreedTerms} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, border: "none", borderRadius: 12, background: (authMode === "signup" && !agreedTerms) ? "#bbb" : "#1a1a1a", color: "#fff", cursor: (authMode === "signup" && !agreedTerms) ? "not-allowed" : "pointer", marginBottom: 8 }}>
+                  {authMode === "login" ? "ログイン" : "同意して登録"}
                 </button>
                 {authMode === "login" && (
                   <button onClick={() => { setShowAuthModal(false); setResetMode(true); }} style={{ width: "100%", fontSize: 12, color: "#aaa", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", marginBottom: 8 }}>パスワードを忘れた</button>
