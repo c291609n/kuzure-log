@@ -295,6 +295,9 @@ export default function App() {
   const [motives, setMotives] = useState([]);
   const [memo, setMemo] = useState("");
   const [eventMemo, setEventMemo] = useState("");
+  const [aiQuestion, setAiQuestion] = useState("");
+  const [aiAnswer, setAiAnswer] = useState("");
+  const [aiQLoading, setAiQLoading] = useState(false);
   const [recovery, setRecovery] = useState([]);
   const [recoveryItems, setRecoveryItems] = useState(RECOVERY_DEFAULT);
   const [eventItems, setEventItems] = useState(EVENTS_DEFAULT);
@@ -364,6 +367,7 @@ export default function App() {
           actions: l.actions || [], motives: l.motives || [],
           memo: l.memo || "", recovery: l.recovery || [],
           isPeriod: l.is_period, eventMemo: l.event_memo || "",
+          aiQuestion: l.ai_question || "", aiAnswer: l.ai_answer || "",
           id: l.id,
         }));
         setLogs(mapped);
@@ -477,6 +481,8 @@ export default function App() {
     setMotives(entry.motives || []);
     setMemo(entry.memo || "");
     setEventMemo(entry.eventMemo || "");
+    setAiQuestion(entry.aiQuestion || "");
+    setAiAnswer(entry.aiAnswer || "");
     setRecovery(entry.recovery || []);
     setIsPeriod(entry.isPeriod || false);
     setSelectedDate(entry.date);
@@ -501,7 +507,7 @@ export default function App() {
     if (sleep == null || fatigue == null || events.length === 0 || kuzureLevel == null) { alert("全項目を選んでください"); return; }
     const kuzure = kuzureLevel > 0;
     const dateToSave = selectedDate || todayStr();
-    const entry = { date: dateToSave, sleep, fatigue, events, kuzure, kuzureLevel, actions, motives, memo, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo };
+    const entry = { date: dateToSave, sleep, fatigue, events, kuzure, kuzureLevel, actions, motives, memo, recovery, isPeriod: trackPeriod ? isPeriod : null, eventMemo, aiQuestion, aiAnswer };
     if (trackPeriod && isPeriod) setPeriodDates((p) => p.includes(dateToSave) ? p : [...p, dateToSave]);
 
     // Save to Supabase if logged in
@@ -510,6 +516,9 @@ export default function App() {
         user_id: user.id, date: dateToSave, sleep, fatigue,
         events, kuzure, kuzure_level: kuzureLevel, actions, motives, memo,
         recovery, is_period: trackPeriod ? isPeriod : null, event_memo: eventMemo,
+        // Only reference the new columns when the feature was actually used, so
+        // saves keep working even before the ai_question/ai_answer migration runs.
+        ...(aiAnswer || aiQuestion ? { ai_question: aiQuestion, ai_answer: aiAnswer } : {}),
       };
       const existingLog = logs.find(l => l.date === dateToSave);
       const { error } = existingLog?.id
@@ -528,6 +537,7 @@ export default function App() {
     }
     setSleep(null); setFatigue(null); setEvents([]); setKuzureLevel(null);
     setActions([]); setMotives([]); setMemo(""); setRecovery([]); setIsPeriod(false); setEventMemo("");
+    setAiQuestion(""); setAiAnswer("");
     if (dateToSave === todayStr()) setAlreadyLogged(true);
     setEditingLog(null);
     setSaved(true);
@@ -721,6 +731,7 @@ export default function App() {
         気持ち: (l.motives || []).join("・"),
         試したこと: (l.recovery || []).join("・"),
         メモ: l.memo || "",
+        ...(l.aiQuestion && l.aiAnswer ? { 補足質問: l.aiQuestion, 補足回答: l.aiAnswer } : {}),
       };
     });
   };
@@ -930,6 +941,41 @@ ${JSON.stringify(summary, null, 2)}`
       console.error(e);
     }
     setTypeLoading(false);
+  };
+
+  // Ask the AI, based on recent records, for the single most useful follow-up
+  // question — the thing the logs don't yet capture. Login-only (uses callAnalyze).
+  const generateFollowupQuestion = async () => {
+    if (aiQLoading) return;
+    setAiQLoading(true);
+    setAiQuestion("");
+    setAiAnswer("");
+    try {
+      const summary = analysisRecords(logs.slice(0, 14));
+      const res = await callAnalyze({
+        model: "claude-sonnet-4-6",
+        max_tokens: 120,
+        temperature: 0.7,
+        messages: [{
+          role: "user",
+          content: `あなたは「崩れ（心や体の調子が崩れること）」を記録するアプリのアシスタントです。下の記録は、選択式の項目とメモだけで構成されていて、表に出てこない背景（生活リズム・人間関係・環境の変化・体の状態など）はわかりません。分析の精度を上げるために、記録からは読み取れない『あと一つ知りたいこと』を、本人にやさしく1問だけ尋ねてください。
+
+条件：
+- 日本語で、20〜45字程度の質問文のみを返す（前置き・解説・記号は不要）
+- 記録にすでに書いてあることは聞かない
+- 詰問せず、答えやすいやわらかい口調で
+
+記録：${JSON.stringify(summary)}`
+        }]
+      });
+      if (res.status === 401) { setAiQLoading(false); return; }
+      const data = await res.json();
+      const q = cleanLine((data.content || []).map((c) => c.text || "").join("")).trim();
+      if (q) setAiQuestion(q);
+    } catch (e) {
+      console.error(e);
+    }
+    setAiQLoading(false);
   };
 
   // Renders the 4 MBTI-style axis bars for the recovery type.
@@ -1989,6 +2035,27 @@ ${toneInstruction()}
                   <input value={newRecoveryInput} onChange={(e) => setNewRecoveryInput(e.target.value)} onKeyDown={(e) => { if (e.key==="Enter") addRecovery(); }} placeholder="追加する（Enterで確定）" style={{ flex: 1, padding: "10px 12px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#faf9f7", color: "#1a1a1a", outline: "none" }} />
                   <button onClick={addRecovery} style={{ padding: "10px 14px", fontSize: 13, border: "1.5px solid #e4e0d8", borderRadius: 12, background: "#fff", color: "#888", cursor: "pointer" }}>追加</button>
                 </div>
+              </div>
+
+              <div style={S.secWrap}>
+                <div style={S.secHead}><div style={S.secBar("#5a35c8")}/><span style={S.secLabel}>AIからの質問</span></div>
+                <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 10px" }}>記録だけでは見えない部分を、AIが1つだけ聞きます。答えると分析が深まります</p>
+                {!user ? (
+                  <p style={{ fontSize: 12, color: "#a0a0d0", margin: 0 }}>ログインすると使えます</p>
+                ) : logs.length < 1 ? (
+                  <p style={{ fontSize: 12, color: "#a0a0d0", margin: 0 }}>記録が1日分たまると質問できます</p>
+                ) : !aiQuestion ? (
+                  <button onClick={generateFollowupQuestion} disabled={aiQLoading} style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, border: "none", borderRadius: 12, background: aiQLoading ? "#cfc5ec" : "#5a35c8", color: "#fff", cursor: aiQLoading ? "default" : "pointer" }}>{aiQLoading ? "考え中..." : "AIに質問してもらう"}</button>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#f3effc", borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+                      <span style={{ fontSize: 15, lineHeight: 1.4 }}>💬</span>
+                      <p style={{ fontSize: 13, color: "#4a3a80", fontWeight: 600, margin: 0, lineHeight: 1.5 }}>{aiQuestion}</p>
+                    </div>
+                    <textarea value={aiAnswer} onChange={(e) => setAiAnswer(e.target.value)} placeholder="答えられる範囲で。空欄のままでもOK" rows={2} style={S.textarea} />
+                    <button onClick={generateFollowupQuestion} disabled={aiQLoading} style={{ fontSize: 11, color: aiQLoading ? "#ccc" : "#999", background: "none", border: "none", cursor: aiQLoading ? "default" : "pointer", textDecoration: "underline", padding: 0, marginTop: 8 }}>{aiQLoading ? "考え中..." : "別の質問にする"}</button>
+                  </>
+                )}
               </div>
             </>
           )}
