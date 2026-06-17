@@ -1167,8 +1167,8 @@ ${JSON.stringify(data, null, 2)}`
     weeks.forEach((w) => { w.score = w.total ? Math.round(w.levelSum / w.total) : 0; });
     return (
       <div style={{ background: "#fff", border: "1.5px solid #ebe7df", borderRadius: 16, padding: "14px 16px", marginTop: 12 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 4px" }}>崩れの推移（週ごと）</p>
-        <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 14px" }}>棒が低い週ほど崩れが軽めです</p>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: "0.08em", margin: "0 0 4px" }}>崩れ度スコアの推移（週ごと）</p>
+        <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 14px" }}>数字はその週の崩れの程度の平均（0〜100・低いほど軽め）</p>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 90 }}>
           {weeks.map((wk, i) => {
             const h = wk.total === 0 ? 0 : Math.round((wk.score / 100) * 64) + (wk.score > 0 ? 6 : 3);
