@@ -2006,6 +2006,17 @@ ${toneInstruction()}
             )}
           </div>
 
+          {/* 生理：設定でONにした人だけ、折りたたみの外に通常表示する */}
+          {trackPeriod && (
+            <div style={S.secWrap}>
+              <div style={S.secHead}><div style={S.secBar("#e06b8e")}/><span style={S.secLabel}>昨日、生理中だった？</span></div>
+              <div style={S.ynGrid}>
+                <button onClick={() => setIsPeriod(true)} style={S.ynBtn(isPeriod === true, "#e06b8e")}>生理中</button>
+                <button onClick={() => setIsPeriod(false)} style={S.ynBtn(isPeriod === false, "#888")}>違う</button>
+              </div>
+            </div>
+          )}
+
           <div style={S.divider}/>
 
           <button
@@ -2018,15 +2029,6 @@ ${toneInstruction()}
 
           {showOptional && (
             <>
-              {trackPeriod && (
-                <div style={S.secWrap}>
-                  <div style={S.secHead}><div style={S.secBar("#e06b8e")}/><span style={S.secLabel}>昨日、生理中だった？</span></div>
-                  <div style={S.ynGrid}>
-                    <button onClick={() => setIsPeriod(true)} style={S.ynBtn(isPeriod === true, "#e06b8e")}>生理中</button>
-                    <button onClick={() => setIsPeriod(false)} style={S.ynBtn(isPeriod === false, "#888")}>違う</button>
-                  </div>
-                </div>
-              )}
               <div style={S.secWrap}>
                 <div style={S.secHead}><div style={S.secBar("#1a6030")}/><span style={S.secLabel}>昨日試したこと</span></div>
                 <p style={{ fontSize: 11, color: "#b0a898", margin: "0 0 10px" }}>ドラッグで並び替え、×で削除できます</p>
